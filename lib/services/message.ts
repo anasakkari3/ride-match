@@ -1,9 +1,10 @@
 import { getAdminFirestore } from '@/lib/firebase/firestore-admin';
 import { getCurrentUser } from '@/lib/auth/session';
-import type { MessageWithSender, UserProfile, TripWithDriver } from '@/lib/types';
-import { getTripById } from './trip';
+import type { BookingsRow, MessageWithSender, TripsRow, UserProfile } from '@/lib/types';
 import { trackEvent } from './analytics';
 import { createNotification } from './notification';
+import { canAccessTripChat } from '@/lib/auth/permissions';
+import { UnauthorizedError } from '@/lib/utils/errors';
 
 export type InboxThread = {
     tripId: string;
@@ -21,19 +22,17 @@ export async function canUserAccessChat(tripId: string): Promise<boolean> {
 
     const db = getAdminFirestore();
 
-    // Check if driver
     const tripDoc = await db.collection('trips').doc(tripId).get();
     if (!tripDoc.exists) return false;
-    if (tripDoc.data()!.driver_id === user.id) return true;
+    const tripData = tripDoc.data()! as TripsRow;
 
-    // Check if passenger
     const bookingSnap = await db
         .collection('bookings')
         .where('trip_id', '==', tripId)
-        .where('passenger_id', '==', user.id)
+        .where('status', '==', 'confirmed')
         .get();
 
-    return !bookingSnap.empty;
+    return canAccessTripChat(user.id, tripData, bookingSnap.docs.map(d => d.data() as BookingsRow));
 }
 
 async function getUserProfile(db: FirebaseFirestore.Firestore, userId: string): Promise<UserProfile | null> {
@@ -52,14 +51,23 @@ async function getUserProfile(db: FirebaseFirestore.Firestore, userId: string): 
 /** Fetches messages for a specific trip */
 export async function getTripMessages(tripId: string): Promise<MessageWithSender[]> {
     const isAuthorized = await canUserAccessChat(tripId);
-    if (!isAuthorized) throw new Error('Unauthorized');
+    if (!isAuthorized) throw new UnauthorizedError();
 
     const db = getAdminFirestore();
-    const snap = await db
-        .collection('messages')
-        .where('trip_id', '==', tripId)
-        .orderBy('created_at', 'asc')
-        .get();
+    let snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>;
+    try {
+        snap = await db
+            .collection('messages')
+            .where('trip_id', '==', tripId)
+            .orderBy('created_at', 'asc')
+            .get();
+    } catch {
+        // Fallback for missing Firestore indexes or transient query failures.
+        snap = await db
+            .collection('messages')
+            .where('trip_id', '==', tripId)
+            .get();
+    }
 
     if (snap.empty) return [];
 
@@ -71,23 +79,25 @@ export async function getTripMessages(tripId: string): Promise<MessageWithSender
         if (profile) userMap.set(senderId, profile);
     }
 
-    return snap.docs.map(d => {
-        const data = d.data();
-        return {
-            id: d.id,
-            ...data,
-            sender: userMap.get(data.sender_id) ?? null,
-        } as MessageWithSender;
-    });
+    return snap.docs
+        .map(d => {
+            const data = d.data();
+            return {
+                id: d.id,
+                ...data,
+                sender: userMap.get(data.sender_id) ?? null,
+            } as MessageWithSender;
+        })
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 }
 
 /** Sends a message to a trip chat */
 export async function sendTripMessage(tripId: string, content: string): Promise<string> {
     const user = await getCurrentUser();
-    if (!user) throw new Error('Unauthorized');
+    if (!user) throw new UnauthorizedError();
 
     const isAuthorized = await canUserAccessChat(tripId);
-    if (!isAuthorized) throw new Error('Unauthorized to send messages in this trip');
+    if (!isAuthorized) throw new UnauthorizedError('Unauthorized to send messages in this trip');
 
     const db = getAdminFirestore();
 
@@ -112,6 +122,7 @@ export async function sendTripMessage(tripId: string, content: string): Promise<
             
             const bookings = await db.collection('bookings')
                 .where('trip_id', '==', tripId)
+                .where('status', '==', 'confirmed')
                 .get();
             bookings.docs.forEach(b => {
                  const pid = b.data().passenger_id as string;
@@ -156,11 +167,11 @@ export async function getInboxThreads(): Promise<InboxThread[]> {
         .get();
 
     const activeTripIds = new Set<string>();
-    const tripsMap = new Map<string, any>();
+    const tripsMap = new Map<string, (TripsRow & { role: 'driver' | 'passenger' })>();
 
     for (const d of driverSnap.docs) {
         activeTripIds.add(d.id);
-        tripsMap.set(d.id, { ...d.data(), role: 'driver' });
+        tripsMap.set(d.id, { ...(d.data() as TripsRow), role: 'driver' });
     }
 
     for (const p of passengerSnap.docs) {
@@ -171,7 +182,7 @@ export async function getInboxThreads(): Promise<InboxThread[]> {
         if (!tripsMap.has(tid)) {
             const tripDoc = await db.collection('trips').doc(tid).get();
             if (tripDoc.exists) {
-                tripsMap.set(tid, { ...tripDoc.data(), role: 'passenger' });
+                tripsMap.set(tid, { ...(tripDoc.data() as TripsRow), role: 'passenger' });
             }
         }
     }
@@ -183,20 +194,34 @@ export async function getInboxThreads(): Promise<InboxThread[]> {
         const tripData = tripsMap.get(tripId);
         if (!tripData) continue;
 
-        const msgSnap = await db
-            .collection('messages')
-            .where('trip_id', '==', tripId)
-            .orderBy('created_at', 'desc')
-            .limit(1)
-            .get();
+        let msgSnap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>;
+        try {
+            msgSnap = await db
+                .collection('messages')
+                .where('trip_id', '==', tripId)
+                .orderBy('created_at', 'desc')
+                .limit(1)
+                .get();
+        } catch {
+            // Fallback for missing Firestore indexes or transient query failures.
+            msgSnap = await db
+                .collection('messages')
+                .where('trip_id', '==', tripId)
+                .get();
+        }
 
         let lastMessage: MessageWithSender | null = null;
 
         if (!msgSnap.empty) {
-            const msgData = msgSnap.docs[0].data();
+            const latestDoc = [...msgSnap.docs].sort((a, b) => {
+                const timeA = new Date((a.data().created_at as string) ?? 0).getTime();
+                const timeB = new Date((b.data().created_at as string) ?? 0).getTime();
+                return timeB - timeA;
+            })[0];
+            const msgData = latestDoc.data();
             const senderProfile = await getUserProfile(db, msgData.sender_id);
             lastMessage = {
-                id: msgSnap.docs[0].id,
+                id: latestDoc.id,
                 ...msgData,
                 sender: senderProfile,
             } as MessageWithSender;

@@ -9,6 +9,7 @@ export type AnalyticsEventName =
   | 'trip_opened'
   | 'booking_attempted'
   | 'booking_confirmed'
+  | 'trip_started'
   | 'trip_completed'
   | 'rating_submitted'
   | 'message_sent';

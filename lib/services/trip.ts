@@ -3,6 +3,23 @@ import { getCurrentUser } from '@/lib/auth/session';
 import type { TripWithDriver, UserProfile } from '@/lib/types';
 import { trackEvent } from './analytics';
 import { createNotification } from './notification';
+import { getUserProfile } from './user';
+import { UnauthorizedError, NotFoundError, AppError } from '@/lib/utils/errors';
+import { canCancelTrip, canCompleteTrip, canEditTrip, canStartTrip } from '@/lib/auth/permissions';
+import type { TripStatus } from '@/lib/types';
+import {
+  ACTIVE_TRIP_STATUSES,
+  BOOKABLE_TRIP_STATUSES,
+  canTransitionTripState,
+  getEffectiveTripStatus,
+} from '@/lib/trips/lifecycle';
+
+function withEffectiveStatus<T extends { status: TripStatus; seats_available: number }>(trip: T): T {
+  return {
+    ...trip,
+    status: getEffectiveTripStatus(trip),
+  };
+}
 
 export type CreateTripInput = {
   communityId: string;
@@ -19,9 +36,34 @@ export type CreateTripInput = {
 
 export async function createTrip(input: CreateTripInput) {
   const user = await getCurrentUser();
-  if (!user) throw new Error('Unauthorized');
+  if (!user) throw new UnauthorizedError();
 
   const db = getAdminFirestore();
+  const membershipDoc = await db.collection('community_members').doc(`${input.communityId}_${user.id}`).get();
+  if (!membershipDoc.exists) {
+    throw new UnauthorizedError('You must belong to this community to create a trip');
+  }
+
+  if (!input.originName.trim() || !input.destinationName.trim()) {
+    throw new AppError('Origin and destination are required', 'BAD_REQUEST');
+  }
+
+  if (!Number.isInteger(input.seatsTotal) || input.seatsTotal < 1) {
+    throw new AppError('Trips must offer at least 1 seat', 'BAD_REQUEST');
+  }
+
+  if (input.priceCents != null && (!Number.isInteger(input.priceCents) || input.priceCents < 0)) {
+    throw new AppError('Price must be a positive whole number of cents', 'BAD_REQUEST');
+  }
+
+  const departureTime = new Date(input.departureTime);
+  if (Number.isNaN(departureTime.getTime())) {
+    throw new AppError('Departure time is invalid', 'BAD_REQUEST');
+  }
+  if (departureTime.getTime() <= Date.now()) {
+    throw new AppError('Departure time must be in the future', 'BAD_REQUEST');
+  }
+
   const ref = await db.collection('trips').add({
     community_id: input.communityId,
     driver_id: user.id,
@@ -48,26 +90,15 @@ export async function createTrip(input: CreateTripInput) {
   return { id: ref.id };
 }
 
-async function getUserProfile(db: FirebaseFirestore.Firestore, userId: string): Promise<UserProfile | null> {
-  const doc = await db.collection('users').doc(userId).get();
-  if (!doc.exists) return null;
-  const d = doc.data()!;
-  return {
-    id: doc.id,
-    display_name: d.display_name ?? null,
-    avatar_url: d.avatar_url ?? null,
-    rating_avg: d.rating_avg ?? 0,
-    rating_count: d.rating_count ?? 0,
-  };
-}
+
 
 export async function getTripById(tripId: string): Promise<TripWithDriver> {
   const db = getAdminFirestore();
   const doc = await db.collection('trips').doc(tripId).get();
-  if (!doc.exists) throw new Error('Trip not found');
+  if (!doc.exists) throw new NotFoundError('Trip not found');
 
-  const trip = { id: doc.id, ...doc.data() } as TripWithDriver;
-  const driver = await getUserProfile(db, trip.driver_id);
+  const trip = withEffectiveStatus({ id: doc.id, ...doc.data() } as TripWithDriver);
+  const driver = await getUserProfile(trip.driver_id, db);
 
   return { ...trip, driver };
 }
@@ -77,7 +108,7 @@ export async function getTripsByCommunity(communityId: string): Promise<TripWith
   const snap = await db
     .collection('trips')
     .where('community_id', '==', communityId)
-    .where('status', '==', 'scheduled')
+    .where('status', 'in', [...BOOKABLE_TRIP_STATUSES])
     .orderBy('departure_time', 'asc')
     .get();
 
@@ -87,35 +118,65 @@ export async function getTripsByCommunity(communityId: string): Promise<TripWith
   const userMap = new Map<string, UserProfile>();
 
   for (const driverId of driverIds) {
-    const profile = await getUserProfile(db, driverId);
+    const profile = await getUserProfile(driverId, db);
     if (profile) userMap.set(driverId, profile);
   }
 
   return snap.docs.map((d) => {
     const data = d.data();
-    return {
+    return withEffectiveStatus({
       id: d.id,
       ...data,
       driver: userMap.get(data.driver_id) ?? null,
-    } as TripWithDriver;
+    } as TripWithDriver);
   });
 }
 
-export async function updateTripStatus(tripId: string, status: 'scheduled' | 'cancelled' | 'completed') {
+export async function updateTripStatus(tripId: string, status: TripStatus) {
   const user = await getCurrentUser();
-  if (!user) throw new Error('Unauthorized');
+  if (!user) throw new UnauthorizedError();
 
   const db = getAdminFirestore();
   const ref = db.collection('trips').doc(tripId);
-  const doc = await ref.get();
+  if (status !== 'in_progress' && status !== 'completed' && status !== 'cancelled') {
+    throw new AppError(`Trip status ${status} cannot be set manually`, 'BAD_REQUEST');
+  }
 
-  if (!doc.exists) throw new Error('Trip not found');
-  if (doc.data()!.driver_id !== user.id) throw new Error('Unauthorized');
+  const updatedTrip = await db.runTransaction(async (tx) => {
+    const doc = await tx.get(ref);
+    if (!doc.exists) throw new NotFoundError('Trip not found');
 
-  await ref.update({ status });
+    const currentTrip = withEffectiveStatus({ id: doc.id, ...doc.data() } as TripWithDriver);
+    const currentStatus = currentTrip.status;
+    if (currentStatus === status) {
+      return { ...currentTrip, status };
+    }
+
+    const permissionGate =
+      status === 'cancelled'
+        ? canCancelTrip(user.id, currentTrip)
+        : status === 'in_progress'
+          ? canStartTrip(user.id, currentTrip)
+          : status === 'completed'
+            ? canCompleteTrip(user.id, currentTrip)
+            : { allowed: canEditTrip(user.id, currentTrip), reason: 'unauthorized' };
+
+    if (!permissionGate.allowed) {
+      throw new UnauthorizedError(`Trip update not allowed: ${permissionGate.reason ?? 'forbidden'}`);
+    }
+
+    if (!canTransitionTripState(currentStatus, status)) {
+      throw new AppError(`Cannot move trip from ${currentStatus} to ${status}`, 'BAD_REQUEST');
+    }
+
+    tx.update(ref, { status });
+    return { ...currentTrip, status };
+  });
 
   if (status === 'completed') {
     await trackEvent('trip_completed', { userId: user.id, payload: { trip_id: tripId } });
+  } else if (status === 'in_progress') {
+    await trackEvent('trip_started', { userId: user.id, payload: { trip_id: tripId } });
   } else if (status === 'cancelled') {
     try {
       const bookingsSnap = await db.collection('bookings').where('trip_id', '==', tripId).where('status', '==', 'confirmed').get();
@@ -134,7 +195,7 @@ export async function updateTripStatus(tripId: string, status: 'scheduled' | 'ca
     }
   }
 
-  return { id: tripId, ...doc.data(), status };
+  return updatedTrip;
 }
 
 /** Get upcoming trips where the current user is the driver */
@@ -146,13 +207,13 @@ export async function getMyTripsAsDriver(): Promise<TripWithDriver[]> {
   const snap = await db
     .collection('trips')
     .where('driver_id', '==', user.id)
-    .where('status', '==', 'scheduled')
+    .where('status', 'in', [...ACTIVE_TRIP_STATUSES])
     .get();
 
   if (snap.empty) return [];
 
   return snap.docs
-    .map((d) => ({ id: d.id, ...d.data(), driver: null } as TripWithDriver))
+    .map((d) => withEffectiveStatus({ id: d.id, ...d.data(), driver: null } as TripWithDriver))
     .sort((a, b) => new Date(a.departure_time).getTime() - new Date(b.departure_time).getTime());
 }
 
@@ -162,13 +223,13 @@ export async function getUpcomingCommunityTrips(communityId: string, limitCount 
   const snap = await db
     .collection('trips')
     .where('community_id', '==', communityId)
-    .where('status', '==', 'scheduled')
+    .where('status', 'in', [...BOOKABLE_TRIP_STATUSES])
     .get();
 
   if (snap.empty) return [];
 
   const validTrips = snap.docs
-    .map((d) => ({ id: d.id, ...d.data() } as TripWithDriver))
+    .map((d) => withEffectiveStatus({ id: d.id, ...d.data() } as TripWithDriver))
     .filter((t) => t.seats_available > 0 && new Date(t.departure_time) > new Date())
     .sort((a, b) => new Date(a.departure_time).getTime() - new Date(b.departure_time).getTime())
     .slice(0, limitCount);
@@ -176,7 +237,7 @@ export async function getUpcomingCommunityTrips(communityId: string, limitCount 
   // Fetch driver profiles
   const results: TripWithDriver[] = [];
   for (const trip of validTrips) {
-    const driver = await getUserProfile(db, trip.driver_id);
+    const driver = await getUserProfile(trip.driver_id, db);
     results.push({ ...trip, driver });
   }
 
@@ -184,7 +245,7 @@ export async function getUpcomingCommunityTrips(communityId: string, limitCount 
 }
 
 /** Get upcoming reservations where the current user is a passenger */
-export async function getMyReservations(): Promise<TripWithDriver[]> {
+export async function getMyBookings(): Promise<TripWithDriver[]> {
   const user = await getCurrentUser();
   if (!user) return [];
 
@@ -204,10 +265,11 @@ export async function getMyReservations(): Promise<TripWithDriver[]> {
     const tripDoc = await db.collection('trips').doc(tripId).get();
     if (!tripDoc.exists) continue;
     const data = tripDoc.data()!;
-    if (data.status !== 'scheduled') continue;
+    const trip = withEffectiveStatus({ id: tripDoc.id, ...data, driver: null } as TripWithDriver);
+    if (!['scheduled', 'full', 'in_progress'].includes(trip.status)) continue;
 
-    const driver = await getUserProfile(db, data.driver_id);
-    results.push({ id: tripDoc.id, ...data, driver } as TripWithDriver);
+    const driver = await getUserProfile(data.driver_id, db);
+    results.push({ ...trip, driver });
   }
 
   return results.sort((a, b) => new Date(a.departure_time).getTime() - new Date(b.departure_time).getTime());
@@ -239,8 +301,8 @@ export async function getMyPastTrips(): Promise<TripWithDriver[]> {
   for (const d of driverSnap.docs) {
     tripIds.add(d.id);
     const data = d.data();
-    const driver = await getUserProfile(db, data.driver_id);
-    results.push({ id: d.id, ...data, driver } as TripWithDriver);
+    const driver = await getUserProfile(data.driver_id, db);
+    results.push(withEffectiveStatus({ id: d.id, ...data, driver } as TripWithDriver));
   }
 
   for (const b of bookingsSnap.docs) {
@@ -251,15 +313,15 @@ export async function getMyPastTrips(): Promise<TripWithDriver[]> {
     const data = tripDoc.data()!;
     if (data.status !== 'completed' && data.status !== 'cancelled') continue;
     tripIds.add(tid);
-    const driver = await getUserProfile(db, data.driver_id);
-    results.push({ id: tripDoc.id, ...data, driver } as TripWithDriver);
+    const driver = await getUserProfile(data.driver_id, db);
+    results.push(withEffectiveStatus({ id: tripDoc.id, ...data, driver } as TripWithDriver));
   }
 
   return results.sort((a, b) => new Date(b.departure_time).getTime() - new Date(a.departure_time).getTime()).slice(0, 10);
 }
 
 /** Get high-level stats for trust display */
-export async function getUserStats(userId: string): Promise<{ tripsDriven: number; ridesJoined: number }> {
+export async function getUserStats(userId: string): Promise<{ tripsDriven: number; tripsJoined: number }> {
   const db = getAdminFirestore();
 
   // Trips driven
@@ -278,6 +340,6 @@ export async function getUserStats(userId: string): Promise<{ tripsDriven: numbe
 
   return {
     tripsDriven: driverSnap.size,
-    ridesJoined: bookingsSnap.size,
+    tripsJoined: bookingsSnap.size,
   };
 }

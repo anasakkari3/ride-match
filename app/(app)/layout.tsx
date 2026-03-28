@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/session';
-import { getMyCommunities } from '@/lib/services/community';
 import AppNav from './AppNav';
 
 export default async function AppLayout({
@@ -18,18 +17,6 @@ export default async function AppLayout({
 
   if (!user) {
     redirect('/login');
-  }
-
-  // 2. Check communities — if this fails, still render the page
-  try {
-    const communities = await getMyCommunities();
-    if (!communities?.length) redirect('/community');
-  } catch (err) {
-    // Re-throw redirects so they work
-    if (err && typeof err === 'object' && 'digest' in err && String((err as { digest?: string }).digest).includes('NEXT_REDIRECT')) {
-      throw err;
-    }
-    // Community query failed — don't block the page, just continue
   }
 
   return (

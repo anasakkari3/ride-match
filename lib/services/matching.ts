@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/auth/session';
 import type { TripSearchResult } from '@/lib/types';
 import { trackEvent } from './analytics';
 import { normalizeLocationName, calculateLocationMatchScore } from '../utils/locations';
+import { UnauthorizedError } from '@/lib/utils/errors';
+import { BOOKABLE_TRIP_STATUSES, getEffectiveTripStatus } from '@/lib/trips/lifecycle';
 
 export type SearchTripsParams = {
   communityId: string;
@@ -12,7 +14,7 @@ export type SearchTripsParams = {
 
 export async function searchTrips(params: SearchTripsParams) {
   const user = await getCurrentUser();
-  if (!user) throw new Error('Unauthorized');
+  if (!user) throw new UnauthorizedError();
 
   const db = getAdminFirestore();
 
@@ -28,11 +30,11 @@ export async function searchTrips(params: SearchTripsParams) {
   const originNorm = normalizeLocationName(params.originName);
   const destNorm = normalizeLocationName(params.destinationName);
 
-  // Fetch all scheduled trips in the community
+  // Fetch all bookable trips in the community so older full-state records do not drift out of search.
   const snap = await db
     .collection('trips')
     .where('community_id', '==', params.communityId)
-    .where('status', '==', 'scheduled')
+    .where('status', 'in', [...BOOKABLE_TRIP_STATUSES])
     .get();
 
   const exactMatches: TripSearchResult[] = [];
@@ -42,6 +44,10 @@ export async function searchTrips(params: SearchTripsParams) {
 
   for (const doc of snap.docs) {
     const t = doc.data();
+    if (getEffectiveTripStatus({
+      status: t.status,
+      seats_available: t.seats_available,
+    }) !== 'scheduled') continue;
     const tripOrigin = normalizeLocationName(t.origin_name as string);
     const tripDest = normalizeLocationName(t.destination_name as string);
     if (t.seats_available <= 0) continue;

@@ -31,6 +31,15 @@ export type CommunityMembersRow = {
   joined_at: string;
 };
 
+/** Trip status values */
+export type TripStatus =
+  | 'draft'
+  | 'scheduled'
+  | 'full'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled';
+
 /** Trip stored in Firestore `trips` collection */
 export type TripsRow = {
   id: string;
@@ -46,7 +55,7 @@ export type TripsRow = {
   seats_total: number;
   seats_available: number;
   price_cents: number | null;
-  status: 'scheduled' | 'cancelled' | 'completed';
+  status: TripStatus;
   created_at: string;
 };
 
@@ -142,9 +151,6 @@ export type CommunityInfo = {
   id: string;
   name: string;
 };
-
-/** Trip status values */
-export type TripStatus = 'scheduled' | 'cancelled' | 'completed';
 
 /** Booking status values */
 export type BookingStatus = 'pending' | 'confirmed' | 'cancelled';

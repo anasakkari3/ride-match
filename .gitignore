@@ -1,5 +1,13 @@
-﻿.vscode/
+.vscode/
 .env
 .env.local
 .next/
 node_modules/
+
+# PWA generated files (produced by @ducanh2912/next-pwa at build time, dest: "public")
+public/sw.js
+public/sw.js.map
+public/workbox-*.js
+public/workbox-*.js.map
+public/swe-worker-*.js
+public/swe-worker-*.js.map

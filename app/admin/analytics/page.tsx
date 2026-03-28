@@ -1,20 +1,15 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/session';
-import { getAdminFirestore } from '@/lib/firebase/firestore-admin';
-import { getFunnelMetrics, getDailyTripsAndBookings } from './queries';
+import { isAdmin } from '@/lib/auth/permissions';
+import { getFunnelMetrics, getDailyTripsAndBookings } from '@/lib/services/admin';
 
 export default async function AdminAnalyticsPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
 
-  // Check admin role via community_members
-  const db = getAdminFirestore();
-  const adminSnap = await db.collection('community_members')
-    .where('user_id', '==', user.id)
-    .where('role', '==', 'admin')
-    .limit(1)
-    .get();
-  if (adminSnap.empty) redirect('/app');
+  // Check admin role via helper
+  const isUserAdmin = await isAdmin(user.id);
+  if (!isUserAdmin) redirect('/app');
 
   const [funnel, daily] = await Promise.all([
     getFunnelMetrics(),

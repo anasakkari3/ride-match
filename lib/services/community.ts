@@ -1,6 +1,7 @@
 import { getAdminFirestore } from '@/lib/firebase/firestore-admin';
 import { getCurrentUser } from '@/lib/auth/session';
 import type { CommunityInfo } from '@/lib/types';
+import { UnauthorizedError } from '@/lib/utils/errors';
 
 export async function getCommunityByInviteCode(inviteCode: string): Promise<CommunityInfo | null> {
   const db = getAdminFirestore();
@@ -17,7 +18,7 @@ export async function getCommunityByInviteCode(inviteCode: string): Promise<Comm
 
 export async function joinCommunity(communityId: string) {
   const user = await getCurrentUser();
-  if (!user) throw new Error('Unauthorized');
+  if (!user) throw new UnauthorizedError();
 
   const db = getAdminFirestore();
   const docId = `${communityId}_${user.id}`;
@@ -31,7 +32,7 @@ export async function joinCommunity(communityId: string) {
 
 export async function createCommunity(name: string, inviteCode: string) {
   const user = await getCurrentUser();
-  if (!user) throw new Error('Unauthorized');
+  if (!user) throw new UnauthorizedError();
 
   const db = getAdminFirestore();
   const communityRef = await db.collection('communities').add({

@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { getTripById } from '@/lib/services/trip';
 import { getTripMessages, canUserAccessChat } from '@/lib/services/message';
-import { dictionaries, Lang } from '@/lib/i18n/dictionaries';
+import { dictionaries, Lang, translate } from '@/lib/i18n/dictionaries';
 import ChatRoom from './ChatRoom';
 
 export default async function TripChatPage({
@@ -15,7 +15,7 @@ export default async function TripChatPage({
   const langValue = cookieStore.get('NEXT_LOCALE')?.value as Lang | undefined;
   const lang: Lang = langValue || 'en';
   const dict = dictionaries[lang] || dictionaries['en'];
-  const t = (key: keyof typeof dictionaries['en']) => (dict as any)[key] || (dictionaries['en'] as any)[key] || key as string;
+  const t = (key: keyof typeof dictionaries['en']) => translate(dict, key);
 
   const isAuthorized = await canUserAccessChat(id);
   if (!isAuthorized) {

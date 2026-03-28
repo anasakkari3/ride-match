@@ -2,9 +2,9 @@ import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { getCurrentUser } from '@/lib/auth/session';
-import { getAdminFirestore } from '@/lib/firebase/firestore-admin';
 import { getMyPastTrips, getUserStats } from '@/lib/services/trip';
-import { dictionaries, Lang } from '@/lib/i18n/dictionaries';
+import { getUserProfile } from '@/lib/services/user';
+import { dictionaries, Lang, translate } from '@/lib/i18n/dictionaries';
 import ProfileForm from './ProfileForm';
 
 export default async function ProfilePage() {
@@ -15,14 +15,12 @@ export default async function ProfilePage() {
   const langValue = cookieStore.get('NEXT_LOCALE')?.value as Lang | undefined;
   const lang: Lang = langValue || 'en';
   const dict = dictionaries[lang] || dictionaries['en'];
-  const t = (key: keyof typeof dictionaries['en']) => (dict as any)[key] || (dictionaries['en'] as any)[key] || key as string;
+  const t = (key: keyof typeof dictionaries['en']) => translate(dict, key);
 
-  const db = getAdminFirestore();
-  const doc = await db.collection('users').doc(user.id).get();
-  const profile = doc.exists ? doc.data() : null;
+  const profile = await getUserProfile(user.id);
 
   let pastTrips: Awaited<ReturnType<typeof getMyPastTrips>> = [];
-  let stats = { tripsDriven: 0, ridesJoined: 0 };
+  let stats = { tripsDriven: 0, tripsJoined: 0 };
   try {
     pastTrips = await getMyPastTrips();
     stats = await getUserStats(user.id);
@@ -66,12 +64,12 @@ export default async function ProfilePage() {
             <p className="text-[10px] uppercase tracking-widest font-bold text-slate-500 dark:text-slate-400">Trips Driven</p>
           </div>
         </div>
-        {/* Rides Joined */}
+        {/* Trips Joined */}
         <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-row lg:flex-col items-center justify-start lg:justify-center gap-3 lg:gap-1 text-left lg:text-center">
           <div className="flex h-10 w-10 lg:h-12 lg:w-12 items-center justify-center rounded-full bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 text-lg shrink-0">🎫</div>
           <div>
-            <p className="text-lg lg:text-xl font-bold text-slate-900 dark:text-white">{stats.ridesJoined}</p>
-            <p className="text-[10px] uppercase tracking-widest font-bold text-slate-500 dark:text-slate-400">Rides Joined</p>
+            <p className="text-lg lg:text-xl font-bold text-slate-900 dark:text-white">{stats.tripsJoined}</p>
+            <p className="text-[10px] uppercase tracking-widest font-bold text-slate-500 dark:text-slate-400">Trips Joined</p>
           </div>
         </div>
       </div>
@@ -110,7 +108,7 @@ export default async function ProfilePage() {
                     </span>
                     <span className={`text-xs font-medium ${trip.status === 'completed' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
                       }`}>
-                      {t(trip.status as any) || trip.status}
+                    {t(trip.status as keyof typeof dictionaries['en']) || trip.status}
                     </span>
                     {trip.driver && (
                       <span className="text-xs text-slate-400 dark:text-slate-500">· {trip.driver.display_name ?? t('driver')}</span>

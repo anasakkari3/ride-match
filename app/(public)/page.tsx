@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
-import { dictionaries, Lang } from '@/lib/i18n/dictionaries';
+import { dictionaries, Lang, translate } from '@/lib/i18n/dictionaries';
 
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/session';
@@ -14,7 +14,7 @@ export default async function PublicLandingPage() {
     const langValue = cookieStore.get('NEXT_LOCALE')?.value as Lang | undefined;
     const lang: Lang = langValue || 'en';
     const dict = dictionaries[lang] || dictionaries['en'];
-    const t = (key: keyof typeof dictionaries['en']) => (dict as any)[key] || (dictionaries['en'] as any)[key] || key as string;
+    const t = (key: keyof typeof dictionaries['en']) => translate(dict, key);
 
     return (
         <div className="min-h-screen bg-white dark:bg-slate-950 font-sans flex flex-col">

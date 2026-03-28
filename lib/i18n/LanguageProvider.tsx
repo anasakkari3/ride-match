@@ -17,7 +17,9 @@ const LanguageContext = createContext<LanguageContextProps>({
 
 export function LanguageProvider({ lang, children }: { lang: Lang; children: ReactNode }) {
     const t = (key: TranslationKey | (string & {})): string => {
-        return (dictionaries[lang] as any)?.[key] || (dictionaries['en'] as any)?.[key] || key;
+        return (dictionaries[lang][key as TranslationKey] as string | undefined)
+            ?? (dictionaries['en'][key as TranslationKey] as string | undefined)
+            ?? key as string;
     };
 
     return (

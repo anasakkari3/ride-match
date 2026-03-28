@@ -1,24 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { signOut } from '@/app/(auth)/login/actions';
 import { useTranslation } from '@/lib/i18n/LanguageProvider';
 import { setLanguageCookie } from '@/lib/i18n/actions';
+import type { Lang } from '@/lib/i18n/dictionaries';
 
-type SettingItem = {
-    icon: React.ReactNode;
-    label: string;
-    description: string;
-    action: 'link' | 'toggle' | 'button';
-    href?: string;
-    dangerous?: boolean;
-};
 
 export default function SettingsPage() {
-    const router = useRouter();
     const [signingOut, setSigningOut] = useState(false);
     const [notifications, setNotifications] = useState(true);
     const { theme, setTheme } = useTheme();
@@ -27,6 +18,7 @@ export default function SettingsPage() {
     const [locationSharing, setLocationSharing] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+    // Standard SSR hydration guard for next-themes — set state after mount to avoid hydration mismatch
     useEffect(() => {
         setMounted(true);
     }, []);
@@ -145,7 +137,7 @@ export default function SettingsPage() {
                         <select
                             value={lang}
                             onChange={async (e) => {
-                                await setLanguageCookie(e.target.value as any);
+                                await setLanguageCookie(e.target.value as Lang);
                                 window.location.reload();
                             }}
                             className="text-sm bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-transparent rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium"

@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { getTripById } from '@/lib/services/trip';
 import { hasUserRatedTrip } from '@/lib/services/rating';
-import { dictionaries, Lang } from '@/lib/i18n/dictionaries';
+import { dictionaries, Lang, translate } from '@/lib/i18n/dictionaries';
 import RateForm from './RateForm';
 import { submitRating } from './actions';
 
@@ -16,7 +16,7 @@ export default async function RateTripPage({
   const langValue = cookieStore.get('NEXT_LOCALE')?.value as Lang | undefined;
   const lang: Lang = langValue || 'en';
   const dict = dictionaries[lang] || dictionaries['en'];
-  const t = (key: keyof typeof dictionaries['en']) => (dict as any)[key] || (dictionaries['en'] as any)[key] || key as string;
+  const t = (key: keyof typeof dictionaries['en']) => translate(dict, key);
   let trip;
   try {
     trip = await getTripById(id);

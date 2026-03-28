@@ -1,6 +1,7 @@
 import { getAdminFirestore } from '@/lib/firebase/firestore-admin';
 import { getCurrentUser } from '@/lib/auth/session';
 import type { NotificationsRow } from '@/lib/types';
+import { NotFoundError, UnauthorizedError } from '@/lib/utils/errors';
 
 export async function createNotification(params: {
   userId: string;
@@ -26,35 +27,50 @@ export async function getMyNotifications(): Promise<NotificationsRow[]> {
   if (!user) return [];
 
   const db = getAdminFirestore();
-  const snap = await db.collection('notifications')
-    .where('user_id', '==', user.id)
-    .orderBy('created_at', 'desc')
-    .limit(50)
-    .get();
+  try {
+    const snap = await db.collection('notifications')
+      .where('user_id', '==', user.id)
+      .orderBy('created_at', 'desc')
+      .limit(50)
+      .get();
 
-  return snap.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  } as NotificationsRow));
+    return snap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as NotificationsRow));
+  } catch {
+    // Fallback for missing Firestore indexes or transient query failures.
+    const snap = await db.collection('notifications')
+      .where('user_id', '==', user.id)
+      .get();
+
+    return snap.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as NotificationsRow))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 50);
+  }
 }
 
 export async function markNotificationAsRead(id: string) {
   const user = await getCurrentUser();
-  if (!user) throw new Error('Unauthorized');
+  if (!user) throw new UnauthorizedError();
 
   const db = getAdminFirestore();
   const ref = db.collection('notifications').doc(id);
   const doc = await ref.get();
   
-  if (!doc.exists) throw new Error('Not found');
-  if (doc.data()?.user_id !== user.id) throw new Error('Unauthorized');
+  if (!doc.exists) throw new NotFoundError('Notification not found');
+  if (doc.data()?.user_id !== user.id) throw new UnauthorizedError();
 
   await ref.update({ is_read: true });
 }
 
 export async function markAllNotificationsAsRead() {
   const user = await getCurrentUser();
-  if (!user) throw new Error('Unauthorized');
+  if (!user) throw new UnauthorizedError();
 
   const db = getAdminFirestore();
   const snap = await db.collection('notifications')

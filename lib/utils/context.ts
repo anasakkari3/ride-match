@@ -3,11 +3,15 @@
  * Used for building Passive Discovery feeds when the user has not searched.
  */
 
+// Accepts any object that may optionally carry primary_hub (e.g. UserProfile, extended profiles)
+type HasPrimaryHub = ({ primary_hub?: string | null } & Record<string, unknown>) | null;
+type HasLocationNames = { origin_name: string; destination_name: string };
+
 export function inferUserContext(
-    userProfile: any | null,
-    myTrips: any[],
-    myReservations: any[],
-    upcomingCommunityTrips: any[]
+    userProfile: HasPrimaryHub,
+    myTrips: HasLocationNames[],
+    myReservations: HasLocationNames[],
+    upcomingCommunityTrips: HasLocationNames[]
 ): string | null {
     // -------------------------------------------------------------
     // Priority 0: Explicit Profile Setting (Future Implementation)

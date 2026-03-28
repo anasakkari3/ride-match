@@ -1,13 +1,22 @@
 export type Lang = 'en' | 'ar' | 'he';
+export type DictKey = keyof typeof dictionaries['en'];
+
+/**
+ * Type-safe dictionary lookup. Falls back to the English value, then the raw key.
+ * Use this instead of `(dict as any)[key]` to satisfy lint.
+ */
+export function translate(dict: typeof dictionaries[Lang], key: DictKey): string {
+  return (dict[key] as string | undefined) ?? (dictionaries.en[key] as string | undefined) ?? key;
+}
 
 export const dictionaries = {
     en: {
         home: 'Home',
-        my_rides: 'My Rides',
+        my_rides: 'My Trips',
         profile: 'Profile',
         good_morning: 'Good morning',
-        finding_ride: 'Finding a ride...',
-        ready_for_ride: 'Ready for your next ride? Find a seat or share your journey.',
+        finding_ride: 'Finding a trip...',
+        ready_for_ride: 'Ready for your next trip? Find a seat or share your journey.',
         searching_active: 'Searching active routes in your community.',
         from: 'From',
         to: 'To',
@@ -15,12 +24,12 @@ export const dictionaries = {
         matching_trips: 'Matching trips',
         related_routes: 'Related routes',
         your_activity: 'Your Activity',
-        available_rides: 'Available Rides',
+        available_rides: 'Available Trips',
         no_perfect_matches: 'No perfect matches right now',
-        no_matches_desc: 'There are no scheduled rides matching your exact route at this time.',
+        no_matches_desc: 'There are no scheduled trips matching your exact route at this time.',
         create_this_trip: 'Create this trip instead',
         drive_and_earn: 'Drive & Earn',
-        offer_ride: 'Offer a ride',
+        offer_ride: 'Offer a trip',
         help_community: 'Help your community, share empty seats, and split travel costs.',
         settings: 'Settings',
         account: 'Account',
@@ -36,7 +45,7 @@ export const dictionaries = {
         seat_left: 'seat left',
         join_community: 'Join Community',
         no_community: 'You haven\'t joined a community yet',
-        no_community_desc: 'Join or create a community to start matching rides.',
+        no_community_desc: 'Join or create a community to start matching trips.',
         search: 'Search',
         clear_search: 'Clear search',
         sign_out: 'Sign Out',
@@ -139,13 +148,13 @@ export const dictionaries = {
         install: 'Install',
         not_now: 'Not now',
         landing_hero_title: 'Community-powered transport',
-        landing_hero_subtitle: 'Share rides, share costs, and travel together with people you trust.',
+        landing_hero_subtitle: 'Share trips, share costs, and travel together with people you trust.',
         get_started: 'Get Started',
         learn_more: 'Learn More',
         how_it_works: 'How it works',
         step_1_title: 'Create a trip',
         step_1_desc: 'Set your origin, destination, and departure time in seconds.',
-        step_2_title: 'Find a ride',
+        step_2_title: 'Find a trip',
         step_2_desc: 'Search for available seats in your community going your way.',
         step_3_title: 'Travel together',
         step_3_desc: 'Coordinate easily and share the journey.',
@@ -158,21 +167,21 @@ export const dictionaries = {
         benefit_3_desc: 'Built-in chat and booking management.',
         product_preview: 'See it in action',
         final_cta_title: 'Ready to hit the road?',
-        final_cta_subtitle: 'Join your community and start sharing rides today.',
+        final_cta_subtitle: 'Join your community and start sharing trips today.',
         footer_privacy: 'Privacy Policy',
         footer_terms: 'Terms of Service',
         footer_contact: 'Contact Us',
         all_rights_reserved: 'All rights reserved.',
         recent_trips: 'Recently Created Trips',
         popular_routes: 'Popular Routes',
-        no_joined_rides: 'No rides joined or created.',
-        no_joined_rides_desc: 'You have not joined or created any rides yet.',
-        find_a_ride: 'Find a Ride',
-        create_a_ride: 'Create a Ride',
+        no_joined_rides: 'No trips joined or created.',
+        no_joined_rides_desc: 'You have not joined or created any trips yet.',
+        find_a_ride: 'Find a Trip',
+        create_a_ride: 'Create a Trip',
         messages_empty_title: 'No messages yet',
         messages_empty_desc: 'Conversations will appear here once you connect with drivers or passengers.',
         notifications_empty_title: 'No notifications',
-        notifications_empty_desc: 'Ride updates and trip alerts will appear here.'
+        notifications_empty_desc: 'Trip updates and alerts will appear here.'
     },
     ar: {
         home: 'الرئيسية',

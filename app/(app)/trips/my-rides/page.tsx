@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
-import { getMyTripsAsDriver, getMyReservations } from '@/lib/services/trip';
+import { getMyTripsAsDriver, getMyBookings } from '@/lib/services/trip';
 import { getCurrentUser } from '@/lib/auth/session';
-import { dictionaries, Lang } from '@/lib/i18n/dictionaries';
+import { dictionaries, Lang, translate } from '@/lib/i18n/dictionaries';
+import { getTripStatusPresentation } from '@/lib/trips/presentation';
 
 export default async function MyRidesPage() {
     const user = await getCurrentUser();
@@ -15,18 +16,18 @@ export default async function MyRidesPage() {
     const langValue = cookieStore.get('NEXT_LOCALE')?.value as Lang | undefined;
     const lang: Lang = langValue || 'en';
     const dict = dictionaries[lang] || dictionaries['en'];
-    const t = (key: keyof typeof dictionaries['en']) => (dict as any)[key] || (dictionaries['en'] as any)[key] || key as string;
+    const t = (key: keyof typeof dictionaries['en']) => translate(dict, key);
 
-    const [myTrips, myReservations] = await Promise.all([
+    const [myTrips, myBookings] = await Promise.all([
         getMyTripsAsDriver(),
-        getMyReservations(),
+        getMyBookings(),
     ]);
 
     return (
         <div className="p-4 max-w-lg mx-auto space-y-6">
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{t('my_rides')}</h1>
 
-            {myReservations.length === 0 && myTrips.length === 0 ? (
+            {myBookings.length === 0 && myTrips.length === 0 ? (
                 <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-8 text-center shadow-sm">
                     <div className="w-16 h-16 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center text-2xl mx-auto mb-4">📭</div>
                     <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">{t('no_joined_rides')}</h3>
@@ -45,19 +46,30 @@ export default async function MyRidesPage() {
             ) : (
                 <div className="space-y-4">
                     {/* Passenger Reservations */}
-                    {myReservations.length > 0 && (
+                    {myBookings.length > 0 && (
                         <section className="space-y-3">
                             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">{t('passenger')}</h2>
                             <div className="space-y-3">
-                                {myReservations.map((trip) => (
+                                {myBookings.map((trip) => (
                                     <Link key={trip.id} href={`/trips/${trip.id}`} className="block rounded-3xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm card-hover relative overflow-hidden group">
+                                        {(() => {
+                                            const statusUi = getTripStatusPresentation(trip);
+                                            return (
                                         <div className="flex items-center gap-3">
-                                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 text-xl shrink-0">🎫</div>
+                                            <div className={`flex h-12 w-12 items-center justify-center rounded-2xl text-xl shrink-0 ${statusUi.accentClassName}`}>🎫</div>
                                             <div className="flex-1 min-w-0">
-                                                <p className="font-semibold text-slate-900 dark:text-slate-100 truncate">{trip.origin_name} → {trip.destination_name}</p>
-                                                <div className="flex items-center gap-2 mt-1">
+                                                <div className="flex items-center gap-2 justify-between">
+                                                    <p className="font-semibold text-slate-900 dark:text-slate-100 truncate">{trip.origin_name} → {trip.destination_name}</p>
+                                                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${statusUi.chipClassName}`}>
+                                                        {statusUi.label}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2 mt-1 flex-wrap">
                                                     <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                                                         {new Date(trip.departure_time).toLocaleDateString(lang, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                    <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                                                        {trip.seats_available} seat{trip.seats_available === 1 ? '' : 's'} open
                                                     </span>
                                                 </div>
                                             </div>
@@ -65,6 +77,8 @@ export default async function MyRidesPage() {
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="rtl:rotate-180"><polyline points="9 18 15 12 9 6" /></svg>
                                             </span>
                                         </div>
+                                            );
+                                        })()}
                                     </Link>
                                 ))}
                             </div>
@@ -78,13 +92,24 @@ export default async function MyRidesPage() {
                             <div className="space-y-3">
                                 {myTrips.map((trip) => (
                                     <Link key={trip.id} href={`/trips/${trip.id}`} className="block rounded-3xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm card-hover relative overflow-hidden group">
+                                        {(() => {
+                                            const statusUi = getTripStatusPresentation(trip);
+                                            return (
                                         <div className="flex items-center gap-3">
-                                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-xl shrink-0">🚗</div>
+                                            <div className={`flex h-12 w-12 items-center justify-center rounded-2xl text-xl shrink-0 ${statusUi.accentClassName}`}>🚗</div>
                                             <div className="flex-1 min-w-0">
-                                                <p className="font-semibold text-slate-900 dark:text-slate-100 truncate">{trip.origin_name} → {trip.destination_name}</p>
-                                                <div className="flex items-center gap-2 mt-1">
+                                                <div className="flex items-center gap-2 justify-between">
+                                                    <p className="font-semibold text-slate-900 dark:text-slate-100 truncate">{trip.origin_name} → {trip.destination_name}</p>
+                                                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${statusUi.chipClassName}`}>
+                                                        {statusUi.label}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2 mt-1 flex-wrap">
                                                     <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                                                         {new Date(trip.departure_time).toLocaleDateString(lang, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                    <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                                                        {trip.seats_available} seat{trip.seats_available === 1 ? '' : 's'} open
                                                     </span>
                                                 </div>
                                             </div>
@@ -92,6 +117,8 @@ export default async function MyRidesPage() {
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="rtl:rotate-180"><polyline points="9 18 15 12 9 6" /></svg>
                                             </span>
                                         </div>
+                                            );
+                                        })()}
                                     </Link>
                                 ))}
                             </div>

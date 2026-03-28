@@ -16,7 +16,7 @@ export default function InlineSearch({ communityId, initialOrigin = '', initialD
     const [origin, setOrigin] = useState(initialOrigin);
     const [destination, setDestination] = useState(initialDestination);
 
-    const hasActiveSearch = initialOrigin || initialDestination;
+    const hasActiveSearch = Boolean(origin.trim() || destination.trim());
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -27,8 +27,8 @@ export default function InlineSearch({ communityId, initialOrigin = '', initialD
         if (origin) params.append('originName', origin);
         if (destination) params.append('destinationName', destination);
 
-        // Push the search directly to the homepage to trigger inline results
-        router.push(`/?${params.toString()}`);
+        // Push the search directly to the app homepage to trigger inline results
+        router.push(`/app?${params.toString()}`);
     };
 
     const handleClear = () => {
