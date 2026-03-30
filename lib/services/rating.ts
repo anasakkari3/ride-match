@@ -15,7 +15,12 @@ export async function hasUserRatedTrip(tripId: string): Promise<boolean> {
   return !existingSnap.empty;
 }
 
-export async function submitRating(tripId: string, clientRatedUserId: string, score: number) {
+export async function submitRating(
+  tripId: string,
+  clientRatedUserId: string,
+  score: number,
+  feedback?: string
+) {
   const user = await getCurrentUser();
   if (!user) throw new UnauthorizedError();
   if (score < 1 || score > 5) throw new AppError('Score must be 1-5', 'BAD_REQUEST');
@@ -79,11 +84,12 @@ export async function submitRating(tripId: string, clientRatedUserId: string, sc
       rater_id: user.id,
       rated_id: ratedUserId,
       score,
+      feedback: feedback?.trim() ? feedback.trim() : null,
       created_at: new Date().toISOString(),
     });
 
-    // 3. Update user's average rating safely
-    // Since we are adding one rating, we can calculate the new average from the old average and count
+    // 3. Update the user's received-rating aggregate safely.
+    // Since we are adding one rating, we can calculate the new average from the old average and count.
     const userRef = db.collection('users').doc(ratedUserId);
     const userDoc = await transaction.get(userRef);
     if (userDoc.exists) {

@@ -1,6 +1,5 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useTranslation } from '@/lib/i18n/LanguageProvider';
 import { updateProfile } from './actions';

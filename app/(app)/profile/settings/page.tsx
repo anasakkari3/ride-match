@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { useTheme } from 'next-themes';
 import { signOut } from '@/app/(auth)/login/actions';
 import { useTranslation } from '@/lib/i18n/LanguageProvider';
@@ -10,18 +10,17 @@ import type { Lang } from '@/lib/i18n/dictionaries';
 
 
 export default function SettingsPage() {
+    const mounted = useSyncExternalStore(
+        () => () => {},
+        () => true,
+        () => false
+    );
     const [signingOut, setSigningOut] = useState(false);
     const [notifications, setNotifications] = useState(true);
     const { theme, setTheme } = useTheme();
     const { lang, t } = useTranslation();
-    const [mounted, setMounted] = useState(false);
     const [locationSharing, setLocationSharing] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
-    // Standard SSR hydration guard for next-themes — set state after mount to avoid hydration mismatch
-    useEffect(() => {
-        setMounted(true);
-    }, []);
 
     const handleSignOut = async () => {
         setSigningOut(true);

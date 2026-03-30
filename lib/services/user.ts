@@ -65,6 +65,25 @@ export async function getUserProfile(userId: string, passedDb?: admin.firestore.
 }
 
 /**
+ * Fetches the full profile including private fields (phone).
+ * Only call this server-side when the authenticated user is viewing their OWN profile.
+ */
+export async function getMyProfileFull(userId: string): Promise<(UserProfile & { phone: string | null }) | null> {
+  const db = getAdminFirestore();
+  const doc = await db.collection('users').doc(userId).get();
+  if (!doc.exists) return null;
+  const d = doc.data()!;
+  return {
+    id: doc.id,
+    display_name: d.display_name ?? null,
+    avatar_url: d.avatar_url ?? null,
+    phone: d.phone ?? null,
+    rating_avg: d.rating_avg ?? 0,
+    rating_count: d.rating_count ?? 0,
+  };
+}
+
+/**
  * Updates a user profile.
  */
 export async function updateUserProfile(userId: string, updates: { displayName: string; avatarUrl: string }) {

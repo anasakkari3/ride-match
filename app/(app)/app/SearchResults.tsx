@@ -67,7 +67,7 @@ export default async function SearchResults({
       <div className="space-y-5 animate-fade-in-up mt-2">
         <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-4 py-3">
           <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-            No exact match for your route
+            No exact trip for your route
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Showing {recommendations.length} trip{recommendations.length !== 1 ? 's' : ''} with a similar origin or destination.
@@ -115,7 +115,7 @@ export default async function SearchResults({
       <section className="space-y-3">
         <div className="flex items-center gap-2 px-1">
           <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-            Matching your route
+            Trips on this route
           </span>
           <span className="flex-1 h-px bg-slate-100 dark:bg-slate-800" />
           <span className="text-[11px] text-slate-400 dark:text-slate-500">

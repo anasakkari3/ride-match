@@ -1,6 +1,6 @@
 /**
  * Shared domain types for the ride-match app.
- * Plain TypeScript interfaces — no Supabase dependency.
+ * Plain TypeScript interfaces - no Supabase dependency.
  */
 
 /** User profile stored in Firestore `users` collection */
@@ -9,7 +9,9 @@ export type UsersRow = {
   phone: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  /** Aggregate of ratings this user has received across all completed-trip roles. */
   rating_avg: number;
+  /** Count of ratings this user has received across all completed-trip roles. */
   rating_count: number;
   created_at: string;
   updated_at: string;
@@ -57,6 +59,8 @@ export type TripsRow = {
   price_cents: number | null;
   status: TripStatus;
   created_at: string;
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
 };
 
 /** Booking stored in Firestore `bookings` collection */
@@ -67,7 +71,17 @@ export type BookingsRow = {
   seats: number;
   status: 'pending' | 'confirmed' | 'cancelled';
   created_at: string;
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
 };
+
+/** Canonical identifiers for structured coordination signals */
+export type TripCoordinationAction =
+  | 'PASSENGER_HERE'
+  | 'PASSENGER_LATE'
+  | 'DRIVER_CONFIRMED'
+  | 'DRIVER_CANCELED_TRIP'
+  | 'PASSENGER_CANCELED_SEAT';
 
 /** Message stored in Firestore `messages` collection */
 export type MessagesRow = {
@@ -76,6 +90,10 @@ export type MessagesRow = {
   sender_id: string;
   content: string;
   created_at: string;
+  sender_display_name?: string | null;
+  sender_avatar_url?: string | null;
+  /** Present only for structured coordination signals - not user-typed chat */
+  coordination_action?: TripCoordinationAction | null;
 };
 
 /** Rating stored in Firestore `ratings` collection */
@@ -85,6 +103,26 @@ export type RatingsRow = {
   rater_id: string;
   rated_id: string;
   score: number;
+  feedback?: string | null;
+  created_at: string;
+};
+
+/** Report stored in Firestore `reports` collection */
+export type ReportsRow = {
+  id: string;
+  trip_id: string;
+  reporter_id: string;
+  reported_id: string;
+  reason: string;
+  context?: string | null;
+  status: 'pending' | 'reviewed' | 'resolved';
+  created_at: string;
+};
+
+/** User block stored in Firestore `user_blocks` collection */
+export type UserBlocksRow = {
+  blocker_id: string;
+  blocked_id: string;
   created_at: string;
 };
 
@@ -116,6 +154,7 @@ export type UserProfile = Pick<UsersRow, 'id' | 'display_name' | 'avatar_url' | 
 /** Trip with optional driver relation */
 export type TripWithDriver = TripsRow & {
   driver: UserProfile | null;
+  driver_completed_drives?: number;
 };
 
 /** Booking with optional passenger relation */
@@ -138,8 +177,9 @@ export type TripSearchResult = {
   departure_time: string;
   seats_available: number;
   price_cents: number | null;
-  driver_rating_avg: number;
-  driver_rating_count: number;
+  driver_received_rating_avg: number;
+  driver_received_rating_count: number;
+  driver_completed_drives: number;
   origin_dist_m: number;
   dest_dist_m: number;
   time_diff_mins: number;

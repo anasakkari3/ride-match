@@ -1,6 +1,7 @@
 import { getAdminFirestore } from '@/lib/firebase/firestore-admin';
 import type { BookingsRow, CommunityMembersRow, TripsRow } from '@/lib/types';
 import { getEffectiveTripStatus } from '@/lib/trips/lifecycle';
+import { hasTripDeparted, isPreDepartureTrip } from '@/lib/trips/coordination';
 
 type TripPermissionTarget = Pick<
   TripsRow,
@@ -17,10 +18,6 @@ function isDriverForTrip(
   return Boolean(userId) && trip.driver_id === userId;
 }
 
-function hasDeparted(trip: Pick<TripsRow, 'departure_time'>): boolean {
-  return new Date(trip.departure_time).getTime() <= Date.now();
-}
-
 function getPermissionTripStatus(
   trip: Pick<TripsRow, 'status' | 'seats_available'>
 ): TripsRow['status'] {
@@ -33,7 +30,7 @@ function getPermissionTripStatus(
 export function canEditTrip(userId: string | undefined | null, trip: TripPermissionTarget): boolean {
   if (!isDriverForTrip(userId, trip)) return false;
   const status = getEffectiveTripStatus(trip);
-  return (status === 'draft' || status === 'scheduled' || status === 'full') && !hasDeparted(trip);
+  return (status === 'draft' || status === 'scheduled' || status === 'full') && !hasTripDeparted(trip);
 }
 
 export function canViewTrip(
@@ -55,7 +52,7 @@ export function canJoinTrip(
   if (trip.driver_id === userId) return { allowed: false, reason: 'self_booking' };
   if (isAlreadyBooked) return { allowed: false, reason: 'duplicate_booking' };
   if (trip.seats_available <= 0) return { allowed: false, reason: 'full' };
-  if (hasDeparted(trip)) return { allowed: false, reason: 'departed' };
+  if (hasTripDeparted(trip)) return { allowed: false, reason: 'departed' };
   if (status !== 'scheduled') return { allowed: false, reason: 'invalid_status' };
   return { allowed: true };
 }
@@ -65,11 +62,11 @@ export function canCancelBooking(
   booking: Pick<BookingsRow, 'passenger_id' | 'status'>,
   trip: TripPermissionTarget
 ): PermissionDecision {
-  const status = getEffectiveTripStatus(trip);
   if (!userId) return { allowed: false, reason: 'unauthorized' };
   if (booking.status !== 'confirmed') return { allowed: false, reason: 'booking_inactive' };
-  if (status !== 'scheduled' && status !== 'full') return { allowed: false, reason: 'invalid_status' };
-  if (hasDeparted(trip)) return { allowed: false, reason: 'departed' };
+  if (!isPreDepartureTrip(trip)) {
+    return { allowed: false, reason: hasTripDeparted(trip) ? 'departed' : 'invalid_status' };
+  }
   if (userId !== booking.passenger_id && userId !== trip.driver_id) {
     return { allowed: false, reason: 'unauthorized' };
   }
@@ -80,10 +77,10 @@ export function canCancelTrip(
   userId: string | undefined | null,
   trip: TripPermissionTarget
 ): PermissionDecision {
-  const status = getEffectiveTripStatus(trip);
   if (!isDriverForTrip(userId, trip)) return { allowed: false, reason: 'unauthorized' };
-  if (status !== 'scheduled' && status !== 'full') return { allowed: false, reason: 'invalid_status' };
-  if (hasDeparted(trip)) return { allowed: false, reason: 'departed' };
+  if (!isPreDepartureTrip(trip)) {
+    return { allowed: false, reason: hasTripDeparted(trip) ? 'departed' : 'invalid_status' };
+  }
   return { allowed: true };
 }
 
@@ -121,15 +118,41 @@ export function canViewTripRoster(
   return activeBookings.some((b) => b.passenger_id === userId && b.status === 'confirmed');
 }
 
-// Chat access matches roster access logic structurally
+export function canViewTripCommunication(
+  userId: string | undefined | null,
+  trip: Pick<TripsRow, 'driver_id' | 'status' | 'seats_available'>,
+  participantBookings: BookingPermissionTarget[]
+): boolean {
+  if (!userId) return false;
+  if (trip.driver_id === userId) return true;
+
+  return participantBookings.some((booking) => {
+    if (booking.passenger_id !== userId) return false;
+    return booking.status === 'confirmed' || booking.status === 'cancelled';
+  });
+}
+
+export function canSendTripCommunication(
+  userId: string | undefined | null,
+  trip: Pick<TripsRow, 'driver_id' | 'status' | 'seats_available'>,
+  participantBookings: BookingPermissionTarget[]
+): boolean {
+  const status = getPermissionTripStatus(trip);
+  if (status !== 'scheduled' && status !== 'full' && status !== 'in_progress') return false;
+
+  if (!userId) return false;
+  if (trip.driver_id === userId) return true;
+
+  return participantBookings.some((booking) => booking.passenger_id === userId && booking.status === 'confirmed');
+}
+
+// Backward-compatible wrapper for older call sites
 export function canAccessTripChat(
   userId: string | undefined | null,
   trip: Pick<TripsRow, 'driver_id' | 'status' | 'seats_available'>,
   confirmedBookings: BookingPermissionTarget[]
 ): boolean {
-  const status = getPermissionTripStatus(trip);
-  if (status === 'cancelled') return false;
-  return canViewTripRoster(userId, trip, confirmedBookings);
+  return canViewTripCommunication(userId, trip, confirmedBookings);
 }
 
 // Determines if `raterId` is allowed to submit a rating against `ratedUserId`

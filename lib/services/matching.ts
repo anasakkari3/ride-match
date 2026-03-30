@@ -5,6 +5,7 @@ import { trackEvent } from './analytics';
 import { normalizeLocationName, calculateLocationMatchScore } from '../utils/locations';
 import { UnauthorizedError } from '@/lib/utils/errors';
 import { BOOKABLE_TRIP_STATUSES, getEffectiveTripStatus } from '@/lib/trips/lifecycle';
+import { getCompletedDriveCountForDriver } from './trust';
 
 export type SearchTripsParams = {
   communityId: string;
@@ -37,6 +38,17 @@ export async function searchTrips(params: SearchTripsParams) {
     .where('status', 'in', [...BOOKABLE_TRIP_STATUSES])
     .get();
 
+  // Fetch block lists for symmetric enforcement
+  const [blockedByUser, userBlockedBy] = await Promise.all([
+    db.collection('user_blocks').where('blocker_id', '==', user.id).get(),
+    db.collection('user_blocks').where('blocked_id', '==', user.id).get(),
+  ]);
+
+  const blockedIds = new Set([
+    ...blockedByUser.docs.map(d => d.data().blocked_id),
+    ...userBlockedBy.docs.map(d => d.data().blocker_id)
+  ]);
+
   const exactMatches: TripSearchResult[] = [];
   const recommendations: TripSearchResult[] = [];
 
@@ -44,6 +56,10 @@ export async function searchTrips(params: SearchTripsParams) {
 
   for (const doc of snap.docs) {
     const t = doc.data();
+
+    // Shield: Driver is blocked or blocked us
+    if (blockedIds.has(t.driver_id)) continue;
+
     if (getEffectiveTripStatus({
       status: t.status,
       seats_available: t.seats_available,
@@ -65,15 +81,16 @@ export async function searchTrips(params: SearchTripsParams) {
 
     const finalScore = baseScore - timePenalty + seatsBonus;
 
-    // Fetch driver rating
-    let driverRating = 0;
-    let driverRatingCount = 0;
+    // Fetch driver trust data. Stored user ratings are generic received ratings, not driver-only ratings.
+    let driverReceivedRatingAvg = 0;
+    let driverReceivedRatingCount = 0;
     const driverDoc = await db.collection('users').doc(t.driver_id).get();
     if (driverDoc.exists) {
       const u = driverDoc.data()!;
-      driverRating = u.rating_avg ?? 0;
-      driverRatingCount = u.rating_count ?? 0;
+      driverReceivedRatingAvg = u.rating_avg ?? 0;
+      driverReceivedRatingCount = u.rating_count ?? 0;
     }
+    const driverCompletedDrives = await getCompletedDriveCountForDriver(t.driver_id, db);
 
     const result: TripSearchResult = {
       id: doc.id,
@@ -84,8 +101,9 @@ export async function searchTrips(params: SearchTripsParams) {
       departure_time: t.departure_time,
       seats_available: t.seats_available,
       price_cents: t.price_cents,
-      driver_rating_avg: driverRating,
-      driver_rating_count: driverRatingCount,
+      driver_received_rating_avg: driverReceivedRatingAvg,
+      driver_received_rating_count: driverReceivedRatingCount,
+      driver_completed_drives: driverCompletedDrives,
       origin_dist_m: 0,
       dest_dist_m: 0,
       time_diff_mins: Math.floor(hoursAway * 60),

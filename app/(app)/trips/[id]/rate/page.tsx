@@ -4,7 +4,6 @@ import { getTripById } from '@/lib/services/trip';
 import { hasUserRatedTrip } from '@/lib/services/rating';
 import { dictionaries, Lang, translate } from '@/lib/i18n/dictionaries';
 import RateForm from './RateForm';
-import { submitRating } from './actions';
 
 export default async function RateTripPage({
   params,
@@ -36,11 +35,16 @@ export default async function RateTripPage({
   }
 
   return (
-    <div className="p-4 max-w-lg mx-auto">
+    <div className="p-4 max-w-lg mx-auto space-y-4">
       <h1 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">{t('rate_trip')}</h1>
       <p className="text-slate-600 dark:text-slate-300 text-sm mb-4">
         {t('how_was_experience')} {trip.driver?.display_name ?? t('the_driver')}?
       </p>
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-4 py-3">
+        <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+          This rating stays lightweight: choose a score and add a short note only if it helps.
+        </p>
+      </div>
       <RateForm tripId={id} driverId={trip.driver_id} />
     </div>
   );

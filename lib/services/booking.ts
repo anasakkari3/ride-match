@@ -42,6 +42,16 @@ export async function bookSeat(tripId: string, seats: number = 1) {
       throw new AppError(`Booking rejected: ${joinGate.reason}`, 'FORBIDDEN');
     }
 
+    // Shield: Symmetric block check
+    const [blockedByUser, userBlockedBy] = await Promise.all([
+      tx.get(db.collection('user_blocks').where('blocker_id', '==', user.id).where('blocked_id', '==', tripData.driver_id)),
+      tx.get(db.collection('user_blocks').where('blocker_id', '==', tripData.driver_id).where('blocked_id', '==', user.id)),
+    ]);
+
+    if (!blockedByUser.empty || !userBlockedBy.empty) {
+      throw new AppError('You cannot book a trip with this user', 'FORBIDDEN');
+    }
+
     if (new Date(effectiveTrip.departure_time).getTime() < Date.now()) {
       throw new AppError('Trip has already departed', 'BAD_REQUEST');
     }
@@ -56,12 +66,13 @@ export async function bookSeat(tripId: string, seats: number = 1) {
     const nextStatus = syncTripStatusWithSeats(effectiveTrip.status, nextSeatsAvailable);
 
     const bookingRef = db.collection('bookings').doc();
+    const createdAt = new Date().toISOString();
     tx.set(bookingRef, {
       trip_id: tripId,
       passenger_id: user.id,
       seats,
       status: 'confirmed',
-      created_at: new Date().toISOString(),
+      created_at: createdAt,
     });
 
     tx.update(tripRef, {
@@ -74,6 +85,14 @@ export async function bookSeat(tripId: string, seats: number = 1) {
       booking_id: bookingRef.id,
       seats_available: nextSeatsAvailable,
       status: nextStatus,
+      booking: {
+        id: bookingRef.id,
+        trip_id: tripId,
+        passenger_id: user.id,
+        seats,
+        status: 'confirmed' as const,
+        created_at: createdAt,
+      } as BookingWithPassenger,
     };
   });
 
@@ -82,8 +101,25 @@ export async function bookSeat(tripId: string, seats: number = 1) {
     payload: { trip_id: tripId, booking_id: result.booking_id },
   });
 
+  let passenger: UserProfile | null = null;
   try {
-    const tripDoc = await getAdminFirestore().collection('trips').doc(tripId).get();
+    const passengerDoc = await db.collection('users').doc(user.id).get();
+    if (passengerDoc.exists) {
+      const passengerData = passengerDoc.data()!;
+      passenger = {
+        id: passengerDoc.id,
+        display_name: passengerData.display_name ?? null,
+        avatar_url: passengerData.avatar_url ?? null,
+        rating_avg: passengerData.rating_avg ?? 0,
+        rating_count: passengerData.rating_count ?? 0,
+      };
+    }
+  } catch {
+    // non-critical
+  }
+
+  try {
+    const tripDoc = await db.collection('trips').doc(tripId).get();
     const driverId = tripDoc.data()?.driver_id;
     if (driverId) {
       await createNotification({
@@ -98,7 +134,13 @@ export async function bookSeat(tripId: string, seats: number = 1) {
     // non-critical
   }
 
-  return result;
+  return {
+    ...result,
+    booking: {
+      ...result.booking,
+      passenger,
+    },
+  };
 }
 
 export async function getBookingsForTrip(tripId: string): Promise<BookingWithPassenger[]> {
@@ -106,7 +148,7 @@ export async function getBookingsForTrip(tripId: string): Promise<BookingWithPas
   const snap = await db
     .collection('bookings')
     .where('trip_id', '==', tripId)
-    .where('status', '==', 'confirmed')
+    .where('status', 'in', ['confirmed', 'cancelled'])
     .get();
 
   if (snap.empty) return [];
@@ -167,7 +209,25 @@ export async function cancelBooking(bookingId: string) {
 
     if (booking.status !== 'confirmed') throw new AppError('Booking already cancelled', 'BAD_REQUEST');
 
-    tx.update(bookingRef, { status: 'cancelled' });
+    const cancelledAt = new Date().toISOString();
+
+    tx.update(bookingRef, {
+      status: 'cancelled',
+      cancelled_at: cancelledAt,
+      cancelled_by: user.id,
+    });
+
+    // Inject cancellation signal
+    const messageRef = db.collection('messages').doc();
+    tx.set(messageRef, {
+      trip_id: booking.trip_id,
+      sender_id: user.id,
+      content: 'cancelled a seat',
+      coordination_action: 'PASSENGER_CANCELED_SEAT',
+      created_at: cancelledAt,
+      sender_display_name: user.displayName ?? null,
+      sender_avatar_url: user.photoURL ?? null,
+    });
 
     // Ensure seats don't exceed the total capacity
     const currentSeats = effectiveTrip.seats_available ?? 0;
@@ -186,6 +246,9 @@ export async function cancelBooking(bookingId: string) {
       tripId: booking.trip_id, 
       seats: booking.seats,
       status: nextStatus,
+      cancelledAt,
+      cancelledBy: user.id,
+      bookingId: bookingRef.id,
     };
   });
 

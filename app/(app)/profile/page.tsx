@@ -3,9 +3,11 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { getCurrentUser } from '@/lib/auth/session';
 import { getMyPastTrips, getUserStats } from '@/lib/services/trip';
-import { getUserProfile } from '@/lib/services/user';
+import { getMyProfileFull } from '@/lib/services/user';
 import { dictionaries, Lang, translate } from '@/lib/i18n/dictionaries';
 import ProfileForm from './ProfileForm';
+import ProfileCompletenessIndicator from './ProfileCompletenessIndicator';
+import { DriverTrustSummary } from '@/app/(app)/DriverTrustSummary';
 
 export default async function ProfilePage() {
   const user = await getCurrentUser();
@@ -17,10 +19,10 @@ export default async function ProfilePage() {
   const dict = dictionaries[lang] || dictionaries['en'];
   const t = (key: keyof typeof dictionaries['en']) => translate(dict, key);
 
-  const profile = await getUserProfile(user.id);
+  const profile = await getMyProfileFull(user.id);
 
   let pastTrips: Awaited<ReturnType<typeof getMyPastTrips>> = [];
-  let stats = { tripsDriven: 0, tripsJoined: 0 };
+  let stats = { completedDrives: 0, completedJoins: 0 };
   try {
     pastTrips = await getMyPastTrips();
     stats = await getUserStats(user.id);
@@ -44,38 +46,43 @@ export default async function ProfilePage() {
         </Link>
       </div>
 
-      {/* Trust Metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 animate-fade-in-up">
-        {/* Rating */}
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm col-span-2 lg:col-span-1 flex flex-row lg:flex-col items-center gap-3 lg:gap-1 text-left lg:text-center">
-          <div className="flex h-10 w-10 lg:h-12 lg:w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30 text-lg shrink-0">⭐</div>
-          <div>
-            <p className="text-lg lg:text-xl font-bold text-slate-900 dark:text-white">
-              {profile?.rating_count ? `${Number(profile.rating_avg).toFixed(1)} (${profile.rating_count})` : 'New'}
-            </p>
-            <p className="text-[10px] uppercase tracking-widest font-bold text-slate-500 dark:text-slate-400">{t('driver_rating') || 'Rating'}</p>
+      {/* Trust */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm p-4 animate-fade-in-up">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Trip history and trust</p>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <DriverTrustSummary
+            ratingAvg={profile?.rating_avg}
+            ratingCount={profile?.rating_count}
+            completedDrives={stats.completedDrives}
+            variant="full"
+          />
+          <div className="flex gap-2 ml-auto">
+            <div className="flex flex-col items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/60 px-3 py-2 min-w-[64px]">
+              <span className="text-sm font-black text-emerald-700 dark:text-emerald-300 tabular-nums leading-none">{stats.completedDrives}</span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 font-medium whitespace-nowrap">completed drives</span>
+            </div>
+            <div className="flex flex-col items-center justify-center rounded-xl bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800/60 px-3 py-2 min-w-[64px]">
+              <span className="text-sm font-black text-sky-700 dark:text-sky-300 tabular-nums leading-none">{stats.completedJoins}</span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 font-medium whitespace-nowrap">completed rides joined</span>
+            </div>
           </div>
         </div>
-        {/* Trips Driven */}
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-row lg:flex-col items-center justify-start lg:justify-center gap-3 lg:gap-1 text-left lg:text-center">
-          <div className="flex h-10 w-10 lg:h-12 lg:w-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-lg shrink-0">🚗</div>
-          <div>
-            <p className="text-lg lg:text-xl font-bold text-slate-900 dark:text-white">{stats.tripsDriven}</p>
-            <p className="text-[10px] uppercase tracking-widest font-bold text-slate-500 dark:text-slate-400">Trips Driven</p>
-          </div>
-        </div>
-        {/* Trips Joined */}
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-row lg:flex-col items-center justify-start lg:justify-center gap-3 lg:gap-1 text-left lg:text-center">
-          <div className="flex h-10 w-10 lg:h-12 lg:w-12 items-center justify-center rounded-full bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 text-lg shrink-0">🎫</div>
-          <div>
-            <p className="text-lg lg:text-xl font-bold text-slate-900 dark:text-white">{stats.tripsJoined}</p>
-            <p className="text-[10px] uppercase tracking-widest font-bold text-slate-500 dark:text-slate-400">Trips Joined</p>
-          </div>
-        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-3">
+          Received rating is your overall feedback from other trip participants across completed rides. Ride cards pair that shared rating with completed drives so we do not imply the rating is driver-only.
+        </p>
+      </div>
+
+      {/* Profile Completeness */}
+      <div className="animate-fade-in-up stagger-1">
+        <ProfileCompletenessIndicator
+          hasDisplayName={!!profile?.display_name}
+          hasAvatar={!!profile?.avatar_url}
+          hasPhone={!!profile?.phone}
+        />
       </div>
 
       {/* Edit Profile Form */}
-      <div className="animate-fade-in-up stagger-1">
+      <div className="animate-fade-in-up stagger-2">
         <ProfileForm
           userId={user.id}
           initialDisplayName={profile?.display_name ?? ''}
@@ -84,7 +91,7 @@ export default async function ProfilePage() {
       </div>
 
       {/* Past Trips / Trip History */}
-      <section className="animate-fade-in-up stagger-2">
+      <section className="animate-fade-in-up stagger-3">
         <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2 px-1">{t('trip_history')}</h2>
         {pastTrips.length > 0 ? (
           <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
@@ -96,11 +103,11 @@ export default async function ProfilePage() {
               >
                 <div className={`flex h-9 w-9 items-center justify-center rounded-lg text-sm shrink-0 ${trip.status === 'completed' ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400'
                   }`}>
-                  {trip.status === 'completed' ? '✓' : '✕'}
+                  {trip.status === 'completed' ? 'OK' : 'X'}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                    {trip.origin_name} → {trip.destination_name}
+                    {trip.origin_name} to {trip.destination_name}
                   </p>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -111,7 +118,7 @@ export default async function ProfilePage() {
                     {t(trip.status as keyof typeof dictionaries['en']) || trip.status}
                     </span>
                     {trip.driver && (
-                      <span className="text-xs text-slate-400 dark:text-slate-500">· {trip.driver.display_name ?? t('driver')}</span>
+                      <span className="text-xs text-slate-400 dark:text-slate-500">| {trip.driver.display_name ?? t('driver')}</span>
                     )}
                   </div>
                 </div>
@@ -121,7 +128,7 @@ export default async function ProfilePage() {
           </div>
         ) : (
           <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm text-center">
-            <div className="text-3xl mb-2">🗺️</div>
+            <div className="text-3xl mb-2">Ã°Å¸â€”ÂºÃ¯Â¸Â</div>
             <p className="text-sm text-slate-500 dark:text-slate-400">{t('no_past_trips')}</p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{t('past_trips_desc')}</p>
           </div>

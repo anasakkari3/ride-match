@@ -9,6 +9,7 @@ import { trackEvent } from '@/lib/services/analytics';
 import { canViewTrip, canViewTripRoster } from '@/lib/auth/permissions';
 import { dictionaries, Lang, translate } from '@/lib/i18n/dictionaries';
 import TripDetailClient from './TripDetailClient';
+import { getTripCommunicationAccess } from '@/lib/services/message';
 
 export default async function TripDetailPage({
   params,
@@ -28,9 +29,16 @@ export default async function TripDetailPage({
   const user = await getCurrentUser();
   let trip;
   let bookings;
+  let communicationAccess = {
+    canView: false,
+    canSendMessages: false,
+    canSendCoordination: false,
+    isRestricted: false,
+  };
   try {
     trip = await getTripById(id);
     bookings = await getBookingsForTrip(id);
+    communicationAccess = await getTripCommunicationAccess(id);
   } catch {
     notFound();
   }
@@ -67,6 +75,7 @@ export default async function TripDetailPage({
         trip={trip}
         bookings={authorizedBookings ?? []}
         currentUserId={user?.id ?? null}
+        communicationAccess={communicationAccess}
         wasJustCreated={resolvedSearchParams?.created === '1'}
       />
       <div className="mt-4">

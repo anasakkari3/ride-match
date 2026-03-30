@@ -13,6 +13,7 @@ import {
   canTransitionTripState,
   getEffectiveTripStatus,
 } from '@/lib/trips/lifecycle';
+import { getCompletedRideStats, getCompletedDriveCountForDriver } from './trust';
 
 function withEffectiveStatus<T extends { status: TripStatus; seats_available: number }>(trip: T): T {
   return {
@@ -99,8 +100,9 @@ export async function getTripById(tripId: string): Promise<TripWithDriver> {
 
   const trip = withEffectiveStatus({ id: doc.id, ...doc.data() } as TripWithDriver);
   const driver = await getUserProfile(trip.driver_id, db);
+  const driverCompletedDrives = await getCompletedDriveCountForDriver(trip.driver_id, db);
 
-  return { ...trip, driver };
+  return { ...trip, driver, driver_completed_drives: driverCompletedDrives };
 }
 
 export async function getTripsByCommunity(communityId: string): Promise<TripWithDriver[]> {
@@ -170,6 +172,27 @@ export async function updateTripStatus(tripId: string, status: TripStatus) {
     }
 
     tx.update(ref, { status });
+
+    if (status === 'cancelled') {
+      const cancelledAt = new Date().toISOString();
+      const messageRef = db.collection('messages').doc();
+      tx.set(messageRef, {
+        trip_id: tripId,
+        sender_id: user.id,
+        content: 'cancelled the trip',
+        coordination_action: 'DRIVER_CANCELED_TRIP',
+        created_at: cancelledAt,
+        sender_display_name: user.displayName ?? null,
+        sender_avatar_url: user.photoURL ?? null,
+      });
+      tx.update(ref, {
+        status,
+        cancelled_at: cancelledAt,
+        cancelled_by: user.id,
+      });
+      return { ...currentTrip, status, cancelled_at: cancelledAt, cancelled_by: user.id };
+    }
+
     return { ...currentTrip, status };
   });
 
@@ -321,25 +344,10 @@ export async function getMyPastTrips(): Promise<TripWithDriver[]> {
 }
 
 /** Get high-level stats for trust display */
-export async function getUserStats(userId: string): Promise<{ tripsDriven: number; tripsJoined: number }> {
-  const db = getAdminFirestore();
-
-  // Trips driven
-  const driverSnap = await db
-    .collection('trips')
-    .where('driver_id', '==', userId)
-    .where('status', '==', 'completed')
-    .get();
-
-  // Rides joined
-  const bookingsSnap = await db
-    .collection('bookings')
-    .where('passenger_id', '==', userId)
-    .where('status', '==', 'confirmed')
-    .get();
-
+export async function getUserStats(userId: string): Promise<{ completedDrives: number; completedJoins: number }> {
+  const stats = await getCompletedRideStats(userId);
   return {
-    tripsDriven: driverSnap.size,
-    tripsJoined: bookingsSnap.size,
+    completedDrives: stats.completedDrives,
+    completedJoins: stats.completedJoins,
   };
 }
