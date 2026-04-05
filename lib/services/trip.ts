@@ -1,9 +1,15 @@
 import { getAdminFirestore } from '@/lib/firebase/firestore-admin';
 import { getCurrentUser } from '@/lib/auth/session';
-import type { TripWithDriver, UserProfile } from '@/lib/types';
+import type { CommunityType, TripWithDriver, UserProfile } from '@/lib/types';
 import { trackEvent } from './analytics';
 import { createNotification } from './notification';
-import { getUserProfile } from './user';
+import {
+  describeProfileActionFields,
+  getTripCreationProfileReadiness,
+  getUserProfile,
+} from './user';
+import { logWarn } from '@/lib/observability/logger';
+import { syncTripMembershipsForTrip, queueDriverTripMembership } from './trip-membership';
 import { UnauthorizedError, NotFoundError, AppError } from '@/lib/utils/errors';
 import { canCancelTrip, canCompleteTrip, canEditTrip, canStartTrip } from '@/lib/auth/permissions';
 import type { TripStatus } from '@/lib/types';
@@ -14,12 +20,68 @@ import {
   getEffectiveTripStatus,
 } from '@/lib/trips/lifecycle';
 import { getCompletedRideStats, getCompletedDriveCountForDriver } from './trust';
+import { getCommunityById } from './community';
 
 function withEffectiveStatus<T extends { status: TripStatus; seats_available: number }>(trip: T): T {
   return {
     ...trip,
     status: getEffectiveTripStatus(trip),
   };
+}
+
+type TripCommunitySnapshotTarget = {
+  community_id: string;
+  community_name?: string | null;
+  community_type?: CommunityType | null;
+};
+
+async function hydrateTripsWithCommunityInfo<T extends TripCommunitySnapshotTarget>(
+  trips: T[],
+  db: FirebaseFirestore.Firestore
+): Promise<T[]> {
+  const missingCommunityIds = [...new Set(
+    trips
+      .filter((trip) => !trip.community_name || !trip.community_type)
+      .map((trip) => trip.community_id)
+  )];
+
+  if (missingCommunityIds.length === 0) {
+    return trips;
+  }
+
+  const communityMap = new Map<string, { name: string; type: CommunityType }>();
+  const chunks: string[][] = [];
+  for (let i = 0; i < missingCommunityIds.length; i += 30) {
+    chunks.push(missingCommunityIds.slice(i, i + 30));
+  }
+
+  for (const chunk of chunks) {
+    const communitySnap = await db.collection('communities').where('__name__', 'in', chunk).get();
+    communitySnap.docs.forEach((doc) => {
+      const data = doc.data();
+      communityMap.set(doc.id, {
+        name: typeof data.name === 'string' ? data.name : 'Community',
+        type: data.type === 'public' ? 'public' : 'verified',
+      });
+    });
+  }
+
+  return trips.map((trip) => {
+    if (trip.community_name && trip.community_type) {
+      return trip;
+    }
+
+    const community = communityMap.get(trip.community_id);
+    if (!community) {
+      return trip;
+    }
+
+    return {
+      ...trip,
+      community_name: trip.community_name ?? community.name,
+      community_type: trip.community_type ?? community.type,
+    };
+  });
 }
 
 export type CreateTripInput = {
@@ -40,9 +102,16 @@ export async function createTrip(input: CreateTripInput) {
   if (!user) throw new UnauthorizedError();
 
   const db = getAdminFirestore();
-  const membershipDoc = await db.collection('community_members').doc(`${input.communityId}_${user.id}`).get();
+  const [membershipDoc, community, userProfileDoc] = await Promise.all([
+    db.collection('community_members').doc(`${input.communityId}_${user.id}`).get(),
+    getCommunityById(input.communityId, db),
+    db.collection('users').doc(user.id).get(),
+  ]);
   if (!membershipDoc.exists) {
     throw new UnauthorizedError('You must belong to this community to create a trip');
+  }
+  if (!community) {
+    throw new NotFoundError('Community not found');
   }
 
   if (!input.originName.trim() || !input.destinationName.trim()) {
@@ -65,8 +134,45 @@ export async function createTrip(input: CreateTripInput) {
     throw new AppError('Departure time must be in the future', 'BAD_REQUEST');
   }
 
+  const userProfileData = userProfileDoc.data() ?? null;
+  const tripCreationReadiness = getTripCreationProfileReadiness(userProfileData);
+  if (!tripCreationReadiness.isReady) {
+    logWarn('trip.create_denied', {
+      communityId: input.communityId,
+      userId: user.id,
+      reason: 'profile_incomplete',
+      missingFields: tripCreationReadiness.missingFields,
+    });
+    throw new AppError(
+      `Trip creation requires driver-ready profile details. Missing or incomplete: ${describeProfileActionFields(tripCreationReadiness.missingFields)}. Update it on your profile page. Placeholder document selections do not count as verification.`,
+      'PROFILE_INCOMPLETE',
+      403
+    );
+  }
+
+  if (community.type === 'public') {
+    const existingPublicTrips = await db
+      .collection('trips')
+      .where('community_id', '==', input.communityId)
+      .where('driver_id', '==', user.id)
+      .where('status', 'in', ['scheduled', 'full', 'in_progress'])
+      .limit(1)
+      .get();
+
+    if (!existingPublicTrips.empty) {
+      throw new AppError(
+        'Public community drivers can only have one active trip at a time',
+        'PUBLIC_COMMUNITY_LIMIT',
+        403
+      );
+    }
+  }
+
+  const now = new Date().toISOString();
   const ref = await db.collection('trips').add({
     community_id: input.communityId,
+    community_name: community.name,
+    community_type: community.type,
     driver_id: user.id,
     origin_lat: input.originLat,
     origin_lng: input.originLng,
@@ -79,8 +185,18 @@ export async function createTrip(input: CreateTripInput) {
     seats_available: input.seatsTotal,
     price_cents: input.priceCents ?? null,
     status: 'scheduled',
-    created_at: new Date().toISOString(),
+    created_at: now,
   });
+
+  const tripMembershipBatch = db.batch();
+  queueDriverTripMembership({
+    db,
+    writer: tripMembershipBatch,
+    tripId: ref.id,
+    driverId: user.id,
+    updatedAt: now,
+  });
+  await tripMembershipBatch.commit();
 
   await trackEvent('trip_created', {
     userId: user.id,
@@ -98,7 +214,17 @@ export async function getTripById(tripId: string): Promise<TripWithDriver> {
   const doc = await db.collection('trips').doc(tripId).get();
   if (!doc.exists) throw new NotFoundError('Trip not found');
 
-  const trip = withEffectiveStatus({ id: doc.id, ...doc.data() } as TripWithDriver);
+  let trip = withEffectiveStatus({ id: doc.id, ...doc.data() } as TripWithDriver);
+  if (!trip.community_name || !trip.community_type) {
+    const community = await getCommunityById(trip.community_id, db);
+    if (community) {
+      trip = {
+        ...trip,
+        community_name: trip.community_name ?? community.name,
+        community_type: trip.community_type ?? community.type,
+      };
+    }
+  }
   const driver = await getUserProfile(trip.driver_id, db);
   const driverCompletedDrives = await getCompletedDriveCountForDriver(trip.driver_id, db);
 
@@ -124,7 +250,7 @@ export async function getTripsByCommunity(communityId: string): Promise<TripWith
     if (profile) userMap.set(driverId, profile);
   }
 
-  return snap.docs.map((d) => {
+  const trips = snap.docs.map((d) => {
     const data = d.data();
     return withEffectiveStatus({
       id: d.id,
@@ -132,6 +258,8 @@ export async function getTripsByCommunity(communityId: string): Promise<TripWith
       driver: userMap.get(data.driver_id) ?? null,
     } as TripWithDriver);
   });
+
+  return hydrateTripsWithCommunityInfo(trips, db);
 }
 
 export async function updateTripStatus(tripId: string, status: TripStatus) {
@@ -164,16 +292,54 @@ export async function updateTripStatus(tripId: string, status: TripStatus) {
             : { allowed: canEditTrip(user.id, currentTrip), reason: 'unauthorized' };
 
     if (!permissionGate.allowed) {
+      logWarn('trip.status_update_denied', {
+        tripId,
+        requestedStatus: status,
+        userId: user.id,
+        reason: permissionGate.reason ?? 'forbidden',
+      });
       throw new UnauthorizedError(`Trip update not allowed: ${permissionGate.reason ?? 'forbidden'}`);
     }
 
     if (!canTransitionTripState(currentStatus, status)) {
+      logWarn('trip.invalid_transition', {
+        tripId,
+        fromStatus: currentStatus,
+        toStatus: status,
+        userId: user.id,
+      });
       throw new AppError(`Cannot move trip from ${currentStatus} to ${status}`, 'BAD_REQUEST');
     }
 
     tx.update(ref, { status });
 
+    if (status === 'in_progress') {
+      const now = new Date();
+      const departureTime = new Date(currentTrip.departure_time);
+      const earliestStart = new Date(departureTime.getTime() - 30 * 60 * 1000); // 30 mins before
+
+      if (now < earliestStart) {
+        throw new AppError('Trip cannot be started more than 30 minutes before departure', 'BAD_REQUEST');
+      }
+
+      const startedAt = now.toISOString();
+      tx.update(ref, { started_at: startedAt });
+      return { ...currentTrip, status, started_at: startedAt };
+    }
+
+    if (status === 'completed') {
+      if (currentStatus !== 'in_progress') {
+        throw new AppError('Trip must be in progress before it can be completed', 'BAD_REQUEST');
+      }
+      const completedAt = new Date().toISOString();
+      tx.update(ref, { completed_at: completedAt });
+      return { ...currentTrip, status, completed_at: completedAt };
+    }
+
     if (status === 'cancelled') {
+      const userRef = db.collection('users').doc(user.id);
+      const userDoc = await tx.get(userRef);
+      const userProfile = userDoc.data();
       const cancelledAt = new Date().toISOString();
       const messageRef = db.collection('messages').doc();
       tx.set(messageRef, {
@@ -182,8 +348,8 @@ export async function updateTripStatus(tripId: string, status: TripStatus) {
         content: 'cancelled the trip',
         coordination_action: 'DRIVER_CANCELED_TRIP',
         created_at: cancelledAt,
-        sender_display_name: user.displayName ?? null,
-        sender_avatar_url: user.photoURL ?? null,
+        sender_display_name: userProfile?.display_name ?? null,
+        sender_avatar_url: userProfile?.avatar_url ?? null,
       });
       tx.update(ref, {
         status,
@@ -201,6 +367,11 @@ export async function updateTripStatus(tripId: string, status: TripStatus) {
   } else if (status === 'in_progress') {
     await trackEvent('trip_started', { userId: user.id, payload: { trip_id: tripId } });
   } else if (status === 'cancelled') {
+    await syncTripMembershipsForTrip(
+      { id: tripId, driver_id: updatedTrip.driver_id },
+      [],
+      db
+    );
     try {
       const bookingsSnap = await db.collection('bookings').where('trip_id', '==', tripId).where('status', '==', 'confirmed').get();
       const notifyPromises = bookingsSnap.docs.map(b => 
@@ -235,9 +406,11 @@ export async function getMyTripsAsDriver(): Promise<TripWithDriver[]> {
 
   if (snap.empty) return [];
 
-  return snap.docs
+  const trips = snap.docs
     .map((d) => withEffectiveStatus({ id: d.id, ...d.data(), driver: null } as TripWithDriver))
     .sort((a, b) => new Date(a.departure_time).getTime() - new Date(b.departure_time).getTime());
+
+  return hydrateTripsWithCommunityInfo(trips, db);
 }
 
 /** Get upcoming trips in a community for the home page preview */
@@ -264,7 +437,23 @@ export async function getUpcomingCommunityTrips(communityId: string, limitCount 
     results.push({ ...trip, driver });
   }
 
-  return results;
+  return hydrateTripsWithCommunityInfo(results, db);
+}
+
+export async function getUpcomingTripsForCommunities(
+  communityIds: string[],
+  limitCount = 6
+): Promise<TripWithDriver[]> {
+  if (communityIds.length === 0) return [];
+
+  const groupedTrips = await Promise.all(
+    communityIds.map((communityId) => getUpcomingCommunityTrips(communityId, limitCount))
+  );
+
+  return groupedTrips
+    .flat()
+    .sort((a, b) => new Date(a.departure_time).getTime() - new Date(b.departure_time).getTime())
+    .slice(0, limitCount);
 }
 
 /** Get upcoming reservations where the current user is a passenger */
@@ -295,7 +484,8 @@ export async function getMyBookings(): Promise<TripWithDriver[]> {
     results.push({ ...trip, driver });
   }
 
-  return results.sort((a, b) => new Date(a.departure_time).getTime() - new Date(b.departure_time).getTime());
+  const hydratedResults = await hydrateTripsWithCommunityInfo(results, db);
+  return hydratedResults.sort((a, b) => new Date(a.departure_time).getTime() - new Date(b.departure_time).getTime());
 }
 
 /** Get past trips (completed/cancelled) where user was driver or passenger */
@@ -340,7 +530,8 @@ export async function getMyPastTrips(): Promise<TripWithDriver[]> {
     results.push(withEffectiveStatus({ id: tripDoc.id, ...data, driver } as TripWithDriver));
   }
 
-  return results.sort((a, b) => new Date(b.departure_time).getTime() - new Date(a.departure_time).getTime()).slice(0, 10);
+  const hydratedResults = await hydrateTripsWithCommunityInfo(results, db);
+  return hydratedResults.sort((a, b) => new Date(b.departure_time).getTime() - new Date(a.departure_time).getTime()).slice(0, 10);
 }
 
 /** Get high-level stats for trust display */

@@ -1,12 +1,17 @@
+import { dictionaryOverrides } from './overrides';
+
 export type Lang = 'en' | 'ar' | 'he';
-export type DictKey = keyof typeof dictionaries['en'];
+type OverrideKey = keyof typeof dictionaryOverrides.en;
+export type DictKey = keyof typeof dictionaries['en'] | OverrideKey;
 
 /**
  * Type-safe dictionary lookup. Falls back to the English value, then the raw key.
  * Use this instead of `(dict as any)[key]` to satisfy lint.
  */
 export function translate(dict: typeof dictionaries[Lang], key: DictKey): string {
-  return (dict[key] as string | undefined) ?? (dictionaries.en[key] as string | undefined) ?? key;
+  const typedDict = dict as Record<string, string>;
+  const englishDict = dictionaries.en as Record<string, string>;
+  return typedDict[key] ?? englishDict[key] ?? key;
 }
 
 export const dictionaries = {
@@ -51,7 +56,7 @@ export const dictionaries = {
         sign_out: 'Sign Out',
         signing_out: 'Signing out…',
         delete_account: 'Delete Account',
-        ride_match: 'Ride Match',
+        ride_match: 'Btriq',
         create_new_trip: 'Create a new trip',
         offer_empty_seats: 'Offer your empty seats and help your community',
         origin_label: 'Origin',
@@ -133,17 +138,17 @@ export const dictionaries = {
         help_faq: 'Help & FAQ',
         help_faq_desc: 'Get answers to common questions',
         rate_the_app: 'Rate the App',
-        rate_the_app_desc: 'Help us improve Ride Match',
+        rate_the_app_desc: 'Help us improve Btriq',
         about: 'About',
-        about_desc: 'Ride Match v1.0.0',
+        about_desc: 'Btriq v1.0.0',
         account_actions: 'Account Actions',
         sign_out_desc: 'You will need to sign in again',
         delete_account_desc: 'Permanently remove your account and data',
         are_you_sure_delete: 'Are you sure? This cannot be undone.',
         delete: 'Delete',
-        welcome_to_ride_match: 'Welcome to Ride Match',
+        welcome_to_ride_match: 'Welcome to Btriq',
         new: 'New',
-        install_ride_match: 'Install Ride Match',
+        install_ride_match: 'Install Btriq',
         add_to_home_screen: 'Add to your home screen for a better experience.',
         install: 'Install',
         not_now: 'Not now',
@@ -158,7 +163,7 @@ export const dictionaries = {
         step_2_desc: 'Search for available seats in your community going your way.',
         step_3_title: 'Travel together',
         step_3_desc: 'Coordinate easily and share the journey.',
-        why_ride_match: 'Why Ride Match?',
+        why_ride_match: 'Why Btriq?',
         benefit_1_title: 'Save travel costs',
         benefit_1_desc: 'Split expenses and make every trip more affordable.',
         benefit_2_title: 'Community-first',
@@ -224,7 +229,7 @@ export const dictionaries = {
         sign_out: 'تسجيل الخروج',
         signing_out: 'جاري تسجيل الخروج...',
         delete_account: 'حذف الحساب',
-        ride_match: 'رايد ماتش',
+        ride_match: 'بطريقك',
         create_new_trip: 'إنشاء رحلة جديدة',
         offer_empty_seats: 'اعرض مقاعدك الفارغة وساعد مجتمعك',
         origin_label: 'نقطة الانطلاق',
@@ -306,17 +311,17 @@ export const dictionaries = {
         help_faq: 'المساعدة والأسئلة الشائعة',
         help_faq_desc: 'احصل على إجابات للأسئلة الشائعة',
         rate_the_app: 'تقييم التطبيق',
-        rate_the_app_desc: 'ساعدنا في تحسين منصة Ride Match',
+        rate_the_app_desc: 'ساعدنا في تحسين بطريقك',
         about: 'حول التطبيق',
-        about_desc: 'Ride Match v1.0.0',
+        about_desc: 'بطريقك v1.0.0',
         account_actions: 'إجراءات الحساب',
         sign_out_desc: 'سوف تحتاج إلى تسجيل الدخول مرة أخرى',
         delete_account_desc: 'حذف حسابك وبياناتك نهائيًا',
         are_you_sure_delete: 'هل أنت متأكد؟ لا يمكن التراجع عن هذا الإجراء.',
         delete: 'حذف',
-        welcome_to_ride_match: 'مرحباً بك في رايد ماتش',
+        welcome_to_ride_match: 'مرحباً بك في بطريقك',
         new: 'جديد',
-        install_ride_match: 'تثبيت رايد ماتش',
+        install_ride_match: 'تثبيت بطريقك',
         add_to_home_screen: 'أضف إلى الشاشة الرئيسية لتجربة أفضل.',
         install: 'تثبيت',
         not_now: 'ليس الآن',
@@ -331,7 +336,7 @@ export const dictionaries = {
         step_2_desc: 'ابحث عن مقاعد متاحة في مجتمعك.',
         step_3_title: 'نسافر معاً',
         step_3_desc: 'نسِّق بسهولة وشارك الرحلة.',
-        why_ride_match: 'لماذا رايد ماتش؟',
+        why_ride_match: 'لماذا بطريقك؟',
         benefit_1_title: 'توفير تكاليف السفر',
         benefit_1_desc: 'قسّم النفقات واجعل كل رحلة أوفر.',
         benefit_2_title: 'أولوية للمجتمع',
@@ -397,7 +402,7 @@ export const dictionaries = {
         sign_out: 'התנתק',
         signing_out: 'מתנתק...',
         delete_account: 'מחק חשבון',
-        ride_match: 'רייד מאץ\'',
+        ride_match: 'בדרכך',
         create_new_trip: 'צור נסיעה חדשה',
         offer_empty_seats: 'הצע את המושבים הריקים שלך ועזור לקהילה',
         origin_label: 'מוצא',
@@ -479,17 +484,17 @@ export const dictionaries = {
         help_faq: 'עזרה ושאלות נפוצות',
         help_faq_desc: 'קבל תשובות לשאלות נפוצות',
         rate_the_app: 'דרג את האפליקציה',
-        rate_the_app_desc: 'עזור לנו לשפר את Ride Match',
+        rate_the_app_desc: 'עזור לנו לשפר את בדרכך',
         about: 'אודות',
-        about_desc: 'Ride Match v1.0.0',
+        about_desc: 'בדרכך v1.0.0',
         account_actions: 'פעולות חשבון',
         sign_out_desc: 'תצטרך להתחבר מחדש',
         delete_account_desc: 'מחק את חשבונך והנתונים שלך לצמיתות',
         are_you_sure_delete: 'האם אתה בטוח? פעולה זו בלתי הפיכה.',
         delete: 'מחק',
-        welcome_to_ride_match: 'ברוכים הבאים ל-Ride Match',
+        welcome_to_ride_match: 'ברוכים הבאים לבדרכך',
         new: 'חדש',
-        install_ride_match: 'התקן את Ride Match',
+        install_ride_match: 'התקן את בדרכך',
         add_to_home_screen: 'הוסף למסך הבית לחוויה טובה יותר.',
         install: 'התקן',
         not_now: 'לא עכשיו',
@@ -504,7 +509,7 @@ export const dictionaries = {
         step_2_desc: 'חפש מקומות פנויים בקהילה שלך לאותו יעד.',
         step_3_title: 'נסע יחד',
         step_3_desc: 'תאם בקלות ושתף את הנסיעה.',
-        why_ride_match: 'למה Ride Match?',
+        why_ride_match: 'למה בדרכך?',
         benefit_1_title: 'חיסכון בעלויות',
         benefit_1_desc: 'פצל הוצאות והפוך כל נסיעה למשתלמת יותר.',
         benefit_2_title: 'קהילה מקומית',
@@ -530,3 +535,7 @@ export const dictionaries = {
         notifications_empty_desc: 'עדכוני נסיעה והתראות יופיעו כאן.'
     }
 };
+
+(Object.keys(dictionaryOverrides) as Lang[]).forEach((lang) => {
+  Object.assign(dictionaries[lang], dictionaryOverrides[lang]);
+});

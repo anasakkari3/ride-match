@@ -7,12 +7,27 @@ import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { useTranslation } from '@/lib/i18n/LanguageProvider';
 import { getFirebaseFirestore } from '@/lib/firebase/config';
 import type { BookingWithPassenger, TripWithDriver } from '@/lib/types';
+import type { Lang } from '@/lib/i18n/dictionaries';
+import {
+  formatLocalizedDate,
+  formatLocalizedDateTime,
+  formatLocalizedTime,
+  formatPriceLabel,
+  formatRouteLabel,
+  formatSeatAvailability,
+  formatSeatCount,
+  getRelativeDayLabel,
+} from '@/lib/i18n/locale';
 import { bookSeat, cancelBookingAction, updateTripStatusAction } from './actions';
 import { getEffectiveTripStatus } from '@/lib/trips/lifecycle';
+import { canStartTrip, canCompleteTrip } from '@/lib/trips/lifecycle-permissions';
 import { DriverTrustSummary } from '@/app/(app)/DriverTrustSummary';
+import CommunityBadge from '@/components/CommunityBadge';
+import EmptyStateCard from '@/components/EmptyStateCard';
 import { canDisplayDriverCancelAction } from '@/lib/trips/coordination';
 import TripCoordinationPanel from './TripCoordinationPanel';
 import ReportUserModal from './ReportUserModal';
+import { DETAIL_COPY, localizeTripActionError } from './tripDetailCopy';
 
 type Props = {
   trip: TripWithDriver;
@@ -27,31 +42,78 @@ type Props = {
   wasJustCreated?: boolean;
 };
 
-function formatDeparture(isoString: string, lang: string) {
+const SURFACE_COPY = {
+  en: {
+    communicationReady: 'Trip communication',
+    communicationReadOnly: 'Trip updates',
+    communicationReadyDesc:
+      'Open the trip thread for pickup notes, structured updates, and any last-minute coordination.',
+    communicationRestrictedDesc:
+      'Direct chat is limited on this trip, but structured updates and cancellations still appear in the same thread.',
+    communicationReadOnlyDesc:
+      'Open the thread to review trip updates, coordination signals, and cancellations in one place.',
+    passengerListHint: 'Confirmed riders and cancellations appear here as this trip changes.',
+    rosterEmptyTitle: 'No passengers yet',
+    rosterEmptyDesc:
+      'This trip is already live in the community. Seats will appear here as riders book.',
+  },
+  ar: {
+    communicationReady: 'تواصل الرحلة',
+    communicationReadOnly: 'تحديثات الرحلة',
+    communicationReadyDesc:
+      'افتح محادثة الرحلة لملاحظات الالتقاء والتحديثات المنظمة وأي تنسيق أخير قبل الانطلاق.',
+    communicationRestrictedDesc:
+      'الدردشة المباشرة محدودة في هذه الرحلة، لكن التحديثات المنظمة وعمليات الإلغاء ما زالت تظهر في نفس المحادثة.',
+    communicationReadOnlyDesc:
+      'افتح المحادثة لمراجعة تحديثات الرحلة وإشارات التنسيق وعمليات الإلغاء في مكان واحد.',
+    passengerListHint: 'تظهر هنا الحجوزات المؤكدة وعمليات الإلغاء كلما تغيّرت الرحلة.',
+    rosterEmptyTitle: 'لا يوجد ركاب بعد',
+    rosterEmptyDesc: 'هذه الرحلة منشورة الآن داخل المجتمع. ستظهر المقاعد هنا عندما يبدأ الركاب بالحجز.',
+  },
+  he: {
+    communicationReady: 'תקשורת נסיעה',
+    communicationReadOnly: 'עדכוני נסיעה',
+    communicationReadyDesc:
+      'פתחו את שרשור הנסיעה להערות איסוף, עדכונים מובנים וכל תיאום של הרגע האחרון.',
+    communicationRestrictedDesc:
+      'הצ׳אט הישיר מוגבל בנסיעה הזאת, אבל עדכונים מובנים וביטולים עדיין מופיעים באותו שרשור.',
+    communicationReadOnlyDesc:
+      'פתחו את השרשור כדי לעבור על עדכוני נסיעה, סימוני תיאום וביטולים במקום אחד.',
+    passengerListHint: 'נוסעים מאושרים וביטולים יופיעו כאן ככל שהנסיעה תשתנה.',
+    rosterEmptyTitle: 'עדיין אין נוסעים',
+    rosterEmptyDesc: 'הנסיעה כבר פעילה בקהילה. מושבים יופיעו כאן ברגע שמישהו יזמין.',
+  },
+} as const;
+
+function formatDeparture(isoString: string, lang: Lang, t: (key: string) => string) {
   const departure = new Date(isoString);
   const now = new Date();
   const diffMs = departure.getTime() - now.getTime();
   const isPast = departure < now;
 
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfDeparture = new Date(departure.getFullYear(), departure.getMonth(), departure.getDate());
-  const dayDiff = Math.round((startOfDeparture.getTime() - startOfToday.getTime()) / 86_400_000);
-
-  let date = departure.toLocaleDateString(lang, {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  });
-
-  if (dayDiff === 0) date = 'Today';
-  if (dayDiff === 1) date = 'Tomorrow';
-
   return {
-    date,
-    time: departure.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' }),
+    date: isPast
+      ? formatLocalizedDate(lang, departure, {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+        })
+      : getRelativeDayLabel(lang, departure, t),
+    time: formatLocalizedTime(lang, departure),
     isPast,
     isSoon: !isPast && diffMs < 60 * 60 * 1000,
   };
+}
+
+function formatPerSeatPrice(
+  priceCents: number | null | undefined,
+  t: (key: string) => string,
+  perSeatSuffix: string
+) {
+  const label = formatPriceLabel(priceCents, t);
+  if (!label) return null;
+  if (priceCents === 0) return label;
+  return `${label} ${perSeatSuffix}`;
 }
 
 function upsertBooking(
@@ -74,6 +136,34 @@ function upsertBooking(
   );
 }
 
+function passengerFromBookingSnapshot(booking: BookingWithPassenger) {
+  const displayName =
+    typeof booking.passenger_display_name === 'string'
+      ? booking.passenger_display_name
+      : null;
+  const avatarUrl =
+    typeof booking.passenger_avatar_url === 'string'
+      ? booking.passenger_avatar_url
+      : null;
+
+  if (!displayName && !avatarUrl) {
+    return null;
+  }
+
+  return {
+    id: booking.passenger_id,
+    display_name: displayName,
+    avatar_url: avatarUrl,
+    rating_avg: 0,
+    rating_count: 0,
+  };
+}
+
+function getParticipantInitial(name: string | null | undefined, fallback: string) {
+  const initial = name?.trim().charAt(0);
+  return (initial || fallback || 'P').toUpperCase();
+}
+
 export default function TripDetailClient({
   trip: initialTrip,
   bookings: initialBookings,
@@ -82,14 +172,14 @@ export default function TripDetailClient({
   wasJustCreated = false,
 }: Props) {
   const { t, lang } = useTranslation();
+  const copy = DETAIL_COPY[lang] ?? DETAIL_COPY.en;
+  const surfaceCopy = SURFACE_COPY[lang] ?? SURFACE_COPY.en;
   const [trip, setTrip] = useState(initialTrip);
   const [bookings, setBookings] = useState(initialBookings);
   const [loading, setLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(
-    wasJustCreated ? 'Your trip is live and visible to your community.' : null
-  );
+  const [notice, setNotice] = useState<string | null>(wasJustCreated ? copy.tripLiveNotice : null);
   const [showBookConfirm, setShowBookConfirm] = useState(false);
   const [showCancelTripConfirm, setShowCancelTripConfirm] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -138,10 +228,15 @@ export default function TripDetailClient({
         const nextBookings = snapshot.docs
           .map((bookingDoc) => {
             const data = bookingDoc.data() as BookingWithPassenger;
+            const snapshotPassenger = passengerFromBookingSnapshot({
+              ...data,
+              id: bookingDoc.id,
+            } as BookingWithPassenger);
+
             return {
               ...data,
               id: bookingDoc.id,
-              passenger: passengerMap.get(bookingDoc.id) ?? null,
+              passenger: passengerMap.get(bookingDoc.id) ?? snapshotPassenger,
             } as BookingWithPassenger;
           })
           .filter(
@@ -155,11 +250,19 @@ export default function TripDetailClient({
 
           return nextBookings.map((booking) => ({
             ...booking,
-            passenger: booking.passenger ?? previousPassengerMap.get(booking.id) ?? null,
+            passenger:
+              booking.passenger ??
+              previousPassengerMap.get(booking.id) ??
+              passengerFromBookingSnapshot(booking),
           }));
         });
       },
       (snapshotError) => {
+        if (snapshotError.code === 'permission-denied') {
+          setBookings([]);
+          setShouldWatchBookings(false);
+          return;
+        }
         console.warn('Booking subscription error:', snapshotError.message);
       }
     );
@@ -184,21 +287,17 @@ export default function TripDetailClient({
   const isCompleted = effectiveStatus === 'completed';
   const isCancelled = effectiveStatus === 'cancelled';
   const isActiveTrip = isScheduled || isFull || isInProgress;
-  const { date, time, isPast, isSoon } = formatDeparture(trip.departure_time, lang);
+  const { date, time, isPast, isSoon } = formatDeparture(trip.departure_time, lang, t);
   const canBook = !isDriver && isScheduled && !hasBooked && !isPast;
-  const canViewTripUpdates = communicationAccess.canView || isDriver || hasBooked || hasCancelled;
+  const canViewTripUpdates = !hasCancelled && (communicationAccess.canView || isDriver || hasBooked);
   const isCommunicationRestricted = communicationAccess.isRestricted && canViewTripUpdates;
   const canSendTripMessages =
     canViewTripUpdates &&
     isActiveTrip &&
     !isCommunicationRestricted &&
     (isDriver || hasBooked);
-  const priceLabel =
-    trip.price_cents == null
-      ? null
-      : trip.price_cents === 0
-        ? 'Free'
-        : `$${(trip.price_cents / 100).toFixed(2)} per seat`;
+  const priceLabel = formatPerSeatPrice(trip.price_cents, t, copy.perSeatSuffix);
+  const priceValueLabel = formatPriceLabel(trip.price_cents, t);
   const canCancelTrip = canDisplayDriverCancelAction({
     trip: {
       status: trip.status,
@@ -209,12 +308,12 @@ export default function TripDetailClient({
   });
 
   const statusConfig = {
-    scheduled: { label: isPast ? 'Departed' : 'Scheduled', color: 'bg-sky-500' },
-    full: { label: 'Full', color: 'bg-amber-500' },
-    in_progress: { label: 'In progress', color: 'bg-indigo-500' },
-    completed: { label: 'Completed', color: 'bg-emerald-500' },
-    cancelled: { label: 'Cancelled', color: 'bg-red-500' },
-    draft: { label: 'Draft', color: 'bg-slate-500' },
+    scheduled: { label: isPast ? copy.departed : t('scheduled'), color: 'bg-sky-500' },
+    full: { label: t('full'), color: 'bg-amber-500' },
+    in_progress: { label: t('in_progress'), color: 'bg-indigo-500' },
+    completed: { label: t('completed'), color: 'bg-emerald-500' },
+    cancelled: { label: t('cancelled'), color: 'bg-red-500' },
+    draft: { label: t('draft'), color: 'bg-slate-500' },
   }[effectiveStatus];
 
   const handleBook = async () => {
@@ -233,9 +332,14 @@ export default function TripDetailClient({
       setShouldWatchBookings(true);
 
       setShowBookConfirm(false);
-      setNotice('Seat reserved. The trip now appears in your trip communication inbox.');
+      setNotice(copy.bookingReservedNotice);
     } catch (bookingError) {
-      setError(bookingError instanceof Error ? bookingError.message : 'Booking failed');
+      setError(
+        localizeTripActionError(
+          bookingError instanceof Error ? bookingError.message : copy.errors.genericBooking,
+          lang
+        )
+      );
     }
 
     setLoading(false);
@@ -268,9 +372,14 @@ export default function TripDetailClient({
             : booking
         )
       );
-      setNotice('Ride cancelled. Your released seat is now visible on this trip.');
+      setNotice(copy.bookingCancelledNotice);
     } catch (cancelError) {
-      setError(cancelError instanceof Error ? cancelError.message : 'Cancel failed');
+      setError(
+        localizeTripActionError(
+          cancelError instanceof Error ? cancelError.message : copy.errors.genericCancel,
+          lang
+        )
+      );
     }
 
     setLoading(false);
@@ -290,13 +399,18 @@ export default function TripDetailClient({
       setShowCancelTripConfirm(false);
       setNotice(
         status === 'in_progress'
-          ? 'Trip started. Trip communication remains available while the trip is active.'
+          ? copy.startTripNotice
           : status === 'completed'
-            ? 'Trip marked as completed.'
-            : 'Trip cancelled. Participants can still see the cancellation here.'
+            ? copy.completedTripNotice
+            : copy.cancelledTripNotice
       );
     } catch (statusError) {
-      setError(statusError instanceof Error ? statusError.message : 'Failed to update trip');
+      setError(
+        localizeTripActionError(
+          statusError instanceof Error ? statusError.message : copy.errors.genericUpdate,
+          lang
+        )
+      );
     }
 
     setStatusLoading(false);
@@ -314,8 +428,12 @@ export default function TripDetailClient({
         }`}>
           <div className="flex items-start justify-between gap-3 mb-4">
             <div>
+              <CommunityBadge name={trip.community_name} type={trip.community_type} />
               <div className="flex items-baseline gap-2">
-                <span className={`text-2xl font-black tabular-nums ${isSoon ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-slate-100'}`}>
+                <span
+                  className={`text-2xl font-black tabular-nums ${isSoon ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-slate-100'}`}
+                  dir="ltr"
+                >
                   {time}
                 </span>
                 <span className={`text-sm font-semibold ${
@@ -328,7 +446,16 @@ export default function TripDetailClient({
                   {date}
                 </span>
               </div>
-              {isSoon && <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mt-0.5">Departing soon</p>}
+              {isSoon && (
+                <p className="mt-0.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+                  {copy.departingSoon}
+                </p>
+              )}
+              {trip.community_type === 'public' && (
+                <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mt-2">
+                  {copy.publicTrustNote}
+                </p>
+              )}
             </div>
             <span className={`shrink-0 inline-flex items-center rounded-full px-3 py-1 text-xs font-bold text-white ${statusConfig.color}`}>
               {statusConfig.label}
@@ -343,12 +470,20 @@ export default function TripDetailClient({
             </div>
             <div className="flex-1 flex flex-col gap-3">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">From</p>
-                <p className="text-base font-bold text-slate-900 dark:text-slate-100 leading-snug">{trip.origin_name}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">
+                  {copy.from}
+                </p>
+                <p className="text-base font-bold text-slate-900 dark:text-slate-100 leading-snug" dir="auto">
+                  {trip.origin_name}
+                </p>
               </div>
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">To</p>
-                <p className="text-base font-bold text-slate-900 dark:text-slate-100 leading-snug">{trip.destination_name}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">
+                  {copy.to}
+                </p>
+                <p className="text-base font-bold text-slate-900 dark:text-slate-100 leading-snug" dir="auto">
+                  {trip.destination_name}
+                </p>
               </div>
             </div>
           </div>
@@ -359,20 +494,22 @@ export default function TripDetailClient({
             {trip.driver?.avatar_url ? (
               <Image
                 src={trip.driver.avatar_url}
-                alt="Driver"
+                alt={copy.driver}
                 width={44}
                 height={44}
                 className="w-11 h-11 rounded-full border-2 border-slate-100 dark:border-slate-700 object-cover shrink-0"
               />
             ) : (
               <div className="w-11 h-11 rounded-full bg-sky-100 dark:bg-sky-900/30 border-2 border-slate-100 dark:border-slate-800 flex items-center justify-center text-sm font-bold text-sky-600 dark:text-sky-400 shrink-0">
-                {(trip.driver?.display_name?.[0] ?? 'D').toUpperCase()}
+                {(trip.driver?.display_name?.[0] ?? copy.driver[0] ?? 'D').toUpperCase()}
               </div>
             )}
             <div className="min-w-0">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Driver</p>
-              <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
-                {trip.driver?.display_name ?? 'Community member'}
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                {copy.driver}
+              </p>
+              <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate" dir="auto">
+                {trip.driver?.display_name ?? copy.communityMember}
               </p>
             </div>
           </div>
@@ -388,9 +525,10 @@ export default function TripDetailClient({
           <div className="px-5 pb-4 -mt-2">
             <button
               onClick={() => setShowReportModal(true)}
+              data-testid="report-driver-button"
               className="text-[11px] font-medium text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 underline underline-offset-2 transition-colors"
             >
-              Report this driver
+              {copy.reportDriver}
             </button>
           </div>
         )}
@@ -405,14 +543,16 @@ export default function TripDetailClient({
                   ? 'text-amber-600 dark:text-amber-400'
                   : 'text-sky-600 dark:text-sky-400'
             }`}>
-              {isFull ? 'Full' : `${trip.seats_available} open`}
+              {isFull ? t('full') : formatSeatAvailability(trip.seats_available, t)}
             </p>
           </div>
           {trip.price_cents != null && (
             <div className="text-right">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Price per seat</p>
-              <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">
-                {trip.price_cents === 0 ? 'Free' : `$${(trip.price_cents / 100).toFixed(2)}`}
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">
+                {copy.pricePerSeat}
+              </p>
+              <p className="text-xl font-black text-emerald-600 dark:text-emerald-400" dir="ltr">
+                {priceValueLabel}
               </p>
             </div>
           )}
@@ -420,9 +560,11 @@ export default function TripDetailClient({
       </div>
 
       <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 p-4">
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">What these signals mean</p>
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+          {copy.whatSignalsMean}
+        </p>
         <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-          Received rating shows the feedback this person has received from other trip participants across completed trips. Completed drives count finished trips this person has driven. Profile setup is shown separately and does not change either number.
+          {copy.signalsDescription}
         </p>
       </div>
 
@@ -440,9 +582,11 @@ export default function TripDetailClient({
 
       {isCommunicationRestricted && canViewTripUpdates && isActiveTrip && (
         <div className="rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4">
-          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Trip communication is limited</p>
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+            {copy.communicationLimitedTitle}
+          </p>
           <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-            A block setting disables direct messages on this shared trip. Structured trip updates, cancellations, and trip status still remain visible.
+            {copy.communicationLimitedDescription}
           </p>
         </div>
       )}
@@ -452,21 +596,40 @@ export default function TripDetailClient({
           <div className="rounded-2xl border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 p-4 space-y-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-[10px] font-bold text-sky-500 uppercase tracking-widest mb-1">Available now</p>
+                <p className="text-[10px] font-bold text-sky-500 uppercase tracking-widest mb-1">
+                  {copy.availableNow}
+                </p>
                 <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">{t('book_seat')}</h3>
                 <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
-                  Reserve 1 seat now{priceLabel ? ` for ${priceLabel.replace(' per seat', '')}` : ''}. The trip will then appear in your trip communication inbox.
+                  {copy.reserveSeatDescription(priceLabel)}
                 </p>
               </div>
               <div className="shrink-0 rounded-full bg-sky-100 dark:bg-sky-900/40 px-3 py-1 text-xs font-bold text-sky-700 dark:text-sky-300">
-                {trip.seats_available} {trip.seats_available === 1 ? 'seat left' : 'seats left'}
+                {formatSeatAvailability(trip.seats_available, t)}
               </div>
             </div>
+            {trip.community_type === 'public' && (
+              <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-3">
+                <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+                  {copy.publicBookingTitle}
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                  {copy.publicBookingDescription}
+                </p>
+                <Link
+                  href="/profile"
+                  className="inline-flex mt-2 text-xs font-medium text-amber-800 dark:text-amber-200 underline underline-offset-2"
+                >
+                  {copy.updateProfile}
+                </Link>
+              </div>
+            )}
             <button
               onClick={() => setShowBookConfirm(true)}
+              data-testid="start-booking-button"
               className="w-full rounded-2xl bg-sky-600 dark:bg-sky-500 px-4 py-4 text-base font-bold text-white hover:bg-sky-700 dark:hover:bg-sky-600 transition-colors btn-press shadow-md"
             >
-              {t('book_seat')} {'>'}
+              {t('book_seat')}
             </button>
           </div>
         ) : (
@@ -474,17 +637,18 @@ export default function TripDetailClient({
             <div>
               <p className="text-sm font-bold text-sky-900 dark:text-sky-100 mb-1">{t('confirm_booking_title')}</p>
               <p className="text-xs text-sky-700 dark:text-sky-300 leading-relaxed">
-                {trip.origin_name} to {trip.destination_name}
-                {trip.price_cents != null && ` | ${trip.price_cents === 0 ? 'Free' : `$${(trip.price_cents / 100).toFixed(2)}`} per seat`}
+                <span dir="auto">{formatRouteLabel(trip.origin_name, trip.destination_name)}</span>
+                {priceLabel ? ` | ${priceLabel}` : ''}
               </p>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={handleBook}
                 disabled={loading}
+                data-testid="confirm-booking-button"
                 className="flex-1 rounded-xl bg-sky-600 dark:bg-sky-500 px-4 py-3 font-bold text-white hover:bg-sky-700 dark:hover:bg-sky-600 disabled:opacity-50 transition-colors"
               >
-                {loading ? t('booking') : 'Confirm booking'}
+                {loading ? t('booking') : copy.confirmBooking}
               </button>
               <button
                 onClick={() => setShowBookConfirm(false)}
@@ -512,27 +676,60 @@ export default function TripDetailClient({
       {canViewTripUpdates && (
         <Link
           href={`/trips/${trip.id}/chat`}
-          className="block rounded-2xl border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-slate-800 transition-colors"
+          data-testid="open-trip-chat-link"
+          className="block rounded-3xl border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 p-4 shadow-sm card-hover transition-colors"
         >
-          {canSendTripMessages ? 'Open trip communication' : 'Open trip updates'}
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sky-600 ring-1 ring-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:ring-sky-800">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 10h10" />
+                <path d="M7 14h6" />
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-sky-600 dark:text-sky-300">
+                {canSendTripMessages ? surfaceCopy.communicationReady : surfaceCopy.communicationReadOnly}
+              </p>
+              <h3 className="mt-1 text-base font-bold text-slate-900 dark:text-slate-100">
+                {canSendTripMessages ? copy.openTripCommunication : copy.openTripUpdates}
+              </h3>
+              <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                {canSendTripMessages
+                  ? surfaceCopy.communicationReadyDesc
+                  : isCommunicationRestricted
+                    ? surfaceCopy.communicationRestrictedDesc
+                    : surfaceCopy.communicationReadOnlyDesc}
+              </p>
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-slate-400 rtl:rotate-180">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </div>
         </Link>
       )}
 
       {isCancelled && (
         <div className="rounded-2xl bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 p-4 text-center space-y-2">
-          <p className="text-sm font-bold text-red-700 dark:text-red-400">Trip cancelled</p>
-          <p className="text-xs text-red-600 dark:text-red-300">
-            {trip.driver?.display_name || 'The driver'} cancelled this ride
-            {trip.cancelled_at ? ` on ${new Date(trip.cancelled_at).toLocaleString()}` : ''}.
+          <p className="text-sm font-bold text-red-700 dark:text-red-400">{copy.tripCancelledTitle}</p>
+          <p className="text-xs text-red-600 dark:text-red-300" dir="auto">
+            {copy.tripCancelledDescription(
+              trip.driver?.display_name || copy.reportDriverFallback,
+              trip.cancelled_at ? formatLocalizedDateTime(lang, trip.cancelled_at) : null
+            )}
           </p>
         </div>
       )}
 
       {hasCancelled && !isCancelled && (
         <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 p-4 text-center space-y-2">
-          <p className="text-sm font-bold text-slate-700 dark:text-slate-300">Seat cancelled</p>
+          <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{copy.seatCancelledTitle}</p>
           <p className="text-xs text-slate-600 dark:text-slate-400">
-            You released your seat{myCancelledBooking?.cancelled_at ? ` on ${new Date(myCancelledBooking.cancelled_at).toLocaleString()}` : ''}.
+            {copy.seatCancelledDescription(
+              myCancelledBooking?.cancelled_at
+                ? formatLocalizedDateTime(lang, myCancelledBooking.cancelled_at)
+                : null
+            )}
           </p>
         </div>
       )}
@@ -553,20 +750,20 @@ export default function TripDetailClient({
           {(isScheduled || isFull) && (
             <button
               onClick={() => handleTripStatus('in_progress')}
-              disabled={statusLoading}
+              disabled={statusLoading || !canStartTrip(currentUserId, trip).allowed}
               className="w-full rounded-2xl bg-indigo-600 dark:bg-indigo-500 px-4 py-4 text-base font-bold text-white hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-50 transition-colors btn-press"
             >
-              {statusLoading ? '...' : 'Start trip'}
+              {statusLoading ? t('loading') : copy.startTrip}
             </button>
           )}
 
           {isInProgress && (
             <button
               onClick={() => handleTripStatus('completed')}
-              disabled={statusLoading}
+              disabled={statusLoading || !canCompleteTrip(currentUserId, trip).allowed}
               className="w-full rounded-2xl bg-emerald-600 dark:bg-emerald-500 px-4 py-4 text-base font-bold text-white hover:bg-emerald-700 dark:hover:bg-emerald-600 disabled:opacity-50 transition-colors btn-press"
             >
-              {statusLoading ? '...' : t('complete_trip')}
+              {statusLoading ? t('loading') : t('complete_trip')}
             </button>
           )}
 
@@ -581,9 +778,11 @@ export default function TripDetailClient({
               </button>
             ) : (
               <div className="rounded-2xl border-2 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 space-y-3">
-                <p className="text-sm font-bold text-red-800 dark:text-red-300">Cancel this trip?</p>
+                <p className="text-sm font-bold text-red-800 dark:text-red-300">
+                  {copy.cancelTripPromptTitle}
+                </p>
                 <p className="text-xs text-red-700 dark:text-red-400">
-                  Everyone will see that this trip was cancelled.
+                  {copy.cancelTripPromptDescription}
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -591,13 +790,13 @@ export default function TripDetailClient({
                     disabled={statusLoading}
                     className="flex-1 rounded-xl bg-red-600 dark:bg-red-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
                   >
-                    {statusLoading ? '...' : 'Yes, cancel trip'}
+                    {statusLoading ? t('loading') : copy.confirmCancelTrip}
                   </button>
                   <button
                     onClick={() => setShowCancelTripConfirm(false)}
                     className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                   >
-                    Keep trip
+                    {copy.keepTrip}
                   </button>
                 </div>
               </div>
@@ -606,47 +805,83 @@ export default function TripDetailClient({
         </div>
       )}
 
-      {(isDriver || hasBooked) && bookings.length > 0 && (
+      {(isDriver || hasBooked) && (bookings.length > 0 || isDriver) && (
         <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-sm">
-          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
-            {t('passengers')} | {confirmedBookings.length}
-          </h2>
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {bookings.map((booking) => {
-              const isPassengerCancelled = booking.status === 'cancelled';
-              return (
-                <div key={booking.id} className={`flex items-center justify-between py-3 first:pt-0 last:pb-0 ${isPassengerCancelled ? 'opacity-60' : ''}`}>
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                      isPassengerCancelled
-                        ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
-                        : 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300'
-                    }`}>
-                      P
-                    </div>
-                    <div>
-                      <span className={`text-sm font-medium ${isPassengerCancelled ? 'line-through text-slate-500' : 'text-slate-700 dark:text-slate-300'}`}>
-                        {booking.passenger?.display_name ?? 'Community member'}
-                      </span>
-                      {isPassengerCancelled && (
-                        <span className="ml-2 text-[10px] font-bold text-red-600 bg-red-100 dark:bg-red-900/20 px-1.5 py-0.5 rounded">
-                          Cancelled
-                        </span>
-                      )}
-                      {isPassengerCancelled && booking.cancelled_at && (
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
-                          {new Date(booking.cancelled_at).toLocaleString()}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                    {booking.seats} {booking.seats === 1 ? 'seat' : 'seats'}
-                  </span>
-                </div>
-              );
-            })}
+          <div className="mb-4">
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+              {t('passengers')} | {confirmedBookings.length}
+            </h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+              {surfaceCopy.passengerListHint}
+            </p>
           </div>
+
+          {bookings.length === 0 ? (
+            <EmptyStateCard
+              title={surfaceCopy.rosterEmptyTitle}
+              description={surfaceCopy.rosterEmptyDesc}
+              icon={
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+              }
+              className="border-dashed bg-slate-50/70 dark:bg-slate-950/30"
+            />
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {bookings.map((booking) => {
+                const isPassengerCancelled = booking.status === 'cancelled';
+                const passengerName = booking.passenger?.display_name ?? copy.communityMember;
+                return (
+                  <div key={booking.id} className={`flex items-center justify-between py-3 first:pt-0 last:pb-0 ${isPassengerCancelled ? 'opacity-60' : ''}`}>
+                    <div className="flex items-center gap-3">
+                      {booking.passenger?.avatar_url ? (
+                        <Image
+                          src={booking.passenger.avatar_url}
+                          alt={passengerName}
+                          width={32}
+                          height={32}
+                          className="h-8 w-8 rounded-full border border-slate-200 object-cover dark:border-slate-700"
+                        />
+                      ) : (
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                          isPassengerCancelled
+                            ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                            : 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300'
+                        }`}>
+                          {getParticipantInitial(booking.passenger?.display_name, copy.passengerInitial)}
+                        </div>
+                      )}
+                      <div>
+                        <span
+                          className={`text-sm font-medium ${isPassengerCancelled ? 'line-through text-slate-500' : 'text-slate-700 dark:text-slate-300'}`}
+                          dir="auto"
+                        >
+                          {passengerName}
+                        </span>
+                        {isPassengerCancelled && (
+                          <span className="ml-2 text-[10px] font-bold text-red-600 bg-red-100 dark:bg-red-900/20 px-1.5 py-0.5 rounded">
+                            {t('cancelled')}
+                          </span>
+                        )}
+                        {isPassengerCancelled && booking.cancelled_at && (
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                            {formatLocalizedDateTime(lang, booking.cancelled_at)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                      {formatSeatCount(booking.seats, t)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -656,7 +891,7 @@ export default function TripDetailClient({
           onClose={() => setShowReportModal(false)}
           tripId={trip.id}
           reportedUserId={trip.driver_id}
-          reportedUserName={trip.driver?.display_name || 'Driver'}
+          reportedUserName={trip.driver?.display_name || copy.reportDriverFallback}
         />
       )}
     </div>

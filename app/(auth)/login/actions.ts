@@ -1,6 +1,6 @@
 'use server';
 
-import { setSession } from '@/lib/auth/session';
+import { clearSession, setSession } from '@/lib/auth/session';
 import { ensureUserProfile } from '@/lib/services/user';
 
 /** Call after client-side Firebase sign-in/sign-up; sets cookie and syncs user profile. */
@@ -14,6 +14,5 @@ export async function setSessionAndSync(idToken: string) {
 }
 
 export async function signOut() {
-  const { clearSession } = await import('@/lib/auth/session');
   await clearSession();
 }

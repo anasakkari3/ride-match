@@ -1,10 +1,11 @@
 import type { MetadataRoute } from 'next';
+import { getBrandMetaDescription, getBrandMetaTitle } from '@/lib/brand/config';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Ride Match',
-    short_name: 'Ride Match',
-    description: 'Community-based ride matching platform',
+    name: getBrandMetaTitle(),
+    short_name: 'OnWay',
+    description: getBrandMetaDescription('en'),
     start_url: '/',
     display: 'standalone',
     background_color: '#ffffff',

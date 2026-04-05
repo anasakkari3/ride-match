@@ -1,24 +1,45 @@
 import { redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
 import Link from 'next/link';
-import { getCurrentUser } from '@/lib/auth/session';
 import { getMyPastTrips, getUserStats } from '@/lib/services/trip';
 import { getMyProfileFull } from '@/lib/services/user';
-import { dictionaries, Lang, translate } from '@/lib/i18n/dictionaries';
 import ProfileForm from './ProfileForm';
 import ProfileCompletenessIndicator from './ProfileCompletenessIndicator';
 import { DriverTrustSummary } from '@/app/(app)/DriverTrustSummary';
+import { formatLocalizedDate } from '@/lib/i18n/locale';
+import { getServerI18n } from '@/lib/i18n/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { getTripStatusPresentationWithTranslation } from '@/lib/trips/presentation';
+
+const COPY = {
+  en: {
+    trustTitle: 'Trip history and trust',
+    completedDrives: 'completed drives',
+    completedJoined: 'completed rides joined',
+    trustHelper: 'Received rating shows the feedback this person has received from other trip participants across completed trips. Completed drives count finished trips this person has driven. Profile setup is shown separately and does not change either number.',
+    tripHistoryEmptyIcon: 'clock',
+  },
+  ar: {
+    trustTitle: 'سجل الرحلات والثقة',
+    completedDrives: 'رحلات مكتملة كسائق',
+    completedJoined: 'رحلات مكتملة انضممت إليها',
+    trustHelper: 'يعرض التقييم المستلم الانطباع العام الذي تلقاه هذا الشخص من بقية المشاركين في الرحلات المكتملة. أما عدد الرحلات المكتملة كسائق فيمثل الرحلات التي قادها بالفعل. إعداد الملف الشخصي معروض بشكل منفصل ولا يغيّر أيًا من الرقمين.',
+    tripHistoryEmptyIcon: 'clock',
+  },
+  he: {
+    trustTitle: 'היסטוריית נסיעות ואמון',
+    completedDrives: 'נסיעות שהושלמו כנהג',
+    completedJoined: 'נסיעות שהצטרפתם אליהן והושלמו',
+    trustHelper: 'הדירוג שהתקבל מציג את המשוב הכללי שהאדם הזה קיבל ממשתתפים אחרים בנסיעות שהושלמו. מספר הנסיעות שהושלמו כנהג מייצג נסיעות שהוא נהג בהן בפועל. הגדרת הפרופיל מוצגת בנפרד ואינה משנה אף אחד מהמספרים.',
+    tripHistoryEmptyIcon: 'clock',
+  },
+} as const;
 
 export default async function ProfilePage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
 
-  const cookieStore = await cookies();
-  const langValue = cookieStore.get('NEXT_LOCALE')?.value as Lang | undefined;
-  const lang: Lang = langValue || 'en';
-  const dict = dictionaries[lang] || dictionaries['en'];
-  const t = (key: keyof typeof dictionaries['en']) => translate(dict, key);
-
+  const { lang, t } = await getServerI18n();
+  const copy = COPY[lang];
   const profile = await getMyProfileFull(user.id);
 
   let pastTrips: Awaited<ReturnType<typeof getMyPastTrips>> = [];
@@ -31,12 +52,12 @@ export default async function ProfilePage() {
   }
 
   return (
-    <div className="p-4 max-w-lg mx-auto space-y-4">
+    <div className="mx-auto max-w-lg space-y-4 p-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('profile')}</h1>
         <Link
           href="/profile/settings"
-          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-all duration-200 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3" />
@@ -46,91 +67,125 @@ export default async function ProfilePage() {
         </Link>
       </div>
 
-      {/* Trust */}
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm p-4 animate-fade-in-up">
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Trip history and trust</p>
-        <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="animate-fade-in-up rounded-2xl border border-slate-200 bg-white p-5 shadow-elevated dark:border-slate-800 dark:bg-slate-900/80">
+        <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">{copy.trustTitle}</p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <DriverTrustSummary
             ratingAvg={profile?.rating_avg}
             ratingCount={profile?.rating_count}
             completedDrives={stats.completedDrives}
             variant="full"
           />
-          <div className="flex gap-2 ml-auto">
-            <div className="flex flex-col items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/60 px-3 py-2 min-w-[64px]">
-              <span className="text-sm font-black text-emerald-700 dark:text-emerald-300 tabular-nums leading-none">{stats.completedDrives}</span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 font-medium whitespace-nowrap">completed drives</span>
+          <div className="ml-auto flex gap-2">
+            <div className="flex min-w-[64px] flex-col items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-800/60 dark:bg-emerald-900/20">
+              <span className="text-sm font-black leading-none tabular-nums text-emerald-700 dark:text-emerald-300">{stats.completedDrives}</span>
+              <span className="mt-0.5 whitespace-nowrap text-[10px] font-medium text-slate-400 dark:text-slate-500">{copy.completedDrives}</span>
             </div>
-            <div className="flex flex-col items-center justify-center rounded-xl bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800/60 px-3 py-2 min-w-[64px]">
-              <span className="text-sm font-black text-sky-700 dark:text-sky-300 tabular-nums leading-none">{stats.completedJoins}</span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 font-medium whitespace-nowrap">completed rides joined</span>
+            <div className="flex min-w-[64px] flex-col items-center justify-center rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 dark:border-sky-800/60 dark:bg-sky-900/20">
+              <span className="text-sm font-black leading-none tabular-nums text-sky-700 dark:text-sky-300">{stats.completedJoins}</span>
+              <span className="mt-0.5 whitespace-nowrap text-[10px] font-medium text-slate-400 dark:text-slate-500">{copy.completedJoined}</span>
             </div>
           </div>
         </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-3">
-          Received rating is your overall feedback from other trip participants across completed rides. Ride cards pair that shared rating with completed drives so we do not imply the rating is driver-only.
+        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+          {copy.trustHelper}
         </p>
       </div>
 
-      {/* Profile Completeness */}
       <div className="animate-fade-in-up stagger-1">
         <ProfileCompletenessIndicator
           hasDisplayName={!!profile?.display_name}
-          hasAvatar={!!profile?.avatar_url}
           hasPhone={!!profile?.phone}
+          hasCityOrArea={!!profile?.city_or_area}
+          hasAge={typeof profile?.age === 'number' && profile.age > 0}
+          hasGender={!!profile?.gender}
+          hasIsDriver={typeof profile?.is_driver === 'boolean'}
+          showDriverLicense={profile?.is_driver === true}
+          hasDriverLicense={profile?.has_driver_license === true}
         />
       </div>
 
-      {/* Edit Profile Form */}
       <div className="animate-fade-in-up stagger-2">
         <ProfileForm
           userId={user.id}
           initialDisplayName={profile?.display_name ?? ''}
           initialAvatarUrl={profile?.avatar_url ?? ''}
+          initialPhone={profile?.phone ?? ''}
+          initialCityOrArea={profile?.city_or_area ?? ''}
+          initialAge={profile?.age ?? null}
+          initialGender={profile?.gender ?? ''}
+          initialIsDriver={profile?.is_driver ?? null}
+          initialHasDriverLicense={profile?.has_driver_license ?? null}
+          initialGenderPreference={profile?.gender_preference ?? ''}
+          initialLicenseImageStatus={profile?.license_image_status ?? 'not_provided'}
+          initialInsuranceImageStatus={profile?.insurance_image_status ?? 'not_provided'}
+          initialLicenseDeclared={profile?.license_declared ?? false}
+          initialInsuranceDeclared={profile?.insurance_declared ?? false}
         />
       </div>
 
-      {/* Past Trips / Trip History */}
       <section className="animate-fade-in-up stagger-3">
-        <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2 px-1">{t('trip_history')}</h2>
+        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('trip_history')}</h2>
         {pastTrips.length > 0 ? (
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
+          <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:divide-slate-800 dark:border-slate-700 dark:bg-slate-900">
             {pastTrips.map((trip) => (
-              <Link
-                key={trip.id}
-                href={`/trips/${trip.id}`}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-              >
-                <div className={`flex h-9 w-9 items-center justify-center rounded-lg text-sm shrink-0 ${trip.status === 'completed' ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400'
-                  }`}>
-                  {trip.status === 'completed' ? 'OK' : 'X'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                    {trip.origin_name} to {trip.destination_name}
-                  </p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      {new Date(trip.departure_time).toLocaleDateString()}
-                    </span>
-                    <span className={`text-xs font-medium ${trip.status === 'completed' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
-                      }`}>
-                    {t(trip.status as keyof typeof dictionaries['en']) || trip.status}
-                    </span>
-                    {trip.driver && (
-                      <span className="text-xs text-slate-400 dark:text-slate-500">| {trip.driver.display_name ?? t('driver')}</span>
-                    )}
-                  </div>
-                </div>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 shrink-0"><polyline points="9 18 15 12 9 6" /></svg>
-              </Link>
+              (() => {
+                const statusUi = getTripStatusPresentationWithTranslation(trip, (key) => t(key));
+                return (
+                  <Link
+                    key={trip.id}
+                    href={`/trips/${trip.id}`}
+                    className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    <div
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm ${
+                        trip.status === 'completed'
+                          ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
+                          : 'bg-red-100 text-red-500 dark:bg-red-900/30 dark:text-red-400'
+                      }`}
+                    >
+                      {trip.status === 'completed' ? 'OK' : 'X'}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100" dir="auto">
+                        {trip.origin_name} → {trip.destination_name}
+                      </p>
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {formatLocalizedDate(lang, trip.departure_time)}
+                        </span>
+                        <span
+                          className={`text-xs font-medium ${
+                            trip.status === 'completed'
+                              ? 'text-green-600 dark:text-green-400'
+                              : 'text-red-500 dark:text-red-400'
+                          }`}
+                        >
+                          {statusUi.label}
+                        </span>
+                        {trip.driver && (
+                          <span className="text-xs text-slate-400 dark:text-slate-500">| {trip.driver.display_name ?? t('driver')}</span>
+                        )}
+                      </div>
+                    </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-slate-400 rtl:rotate-180">
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                  </Link>
+                );
+              })()
             ))}
           </div>
         ) : (
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm text-center">
-            <div className="text-3xl mb-2">Ã°Å¸â€”ÂºÃ¯Â¸Â</div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 8v4l3 3" />
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+            </div>
             <p className="text-sm text-slate-500 dark:text-slate-400">{t('no_past_trips')}</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{t('past_trips_desc')}</p>
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{t('past_trips_desc')}</p>
           </div>
         )}
       </section>

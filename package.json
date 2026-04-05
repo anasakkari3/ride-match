@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:system-community": "node scripts/seed-system-community.mjs",
+    "smoke:e2e": "node scripts/e2e-smoke.mjs",
+    "smoke:e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
@@ -24,6 +27,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "playwright": "^1.59.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

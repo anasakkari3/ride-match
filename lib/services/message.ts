@@ -1,17 +1,32 @@
 import { getAdminFirestore } from '@/lib/firebase/firestore-admin';
 import { getCurrentUser } from '@/lib/auth/session';
-import type { BookingsRow, MessageWithSender, TripsRow, UserProfile } from '@/lib/types';
+import type {
+  BookingsRow,
+  CommunityType,
+  MessageWithSender,
+  TripsRow,
+  UserProfile,
+} from '@/lib/types';
 import { trackEvent } from './analytics';
 import { createNotification } from './notification';
-import { canSendTripCommunication, canViewTripCommunication } from '@/lib/auth/permissions';
+import {
+  canSendTripCommunication,
+  canViewTripCommunication,
+  isCommunityMember,
+} from '@/lib/auth/permissions';
 import { UnauthorizedError } from '@/lib/utils/errors';
 import { hasTripParticipantBlockConflict } from './safety';
 import { getAvailableCoordinationActions } from '@/lib/trips/coordination';
+import { logWarn } from '@/lib/observability/logger';
 
 export type InboxThread = {
   tripId: string;
   tripTitle: string;
+  tripOrigin: string;
+  tripDestination: string;
   tripDate: string;
+  communityName: string | null;
+  communityType: CommunityType | null;
   lastMessage: MessageWithSender | null;
   currentUserRole: 'driver' | 'passenger';
   conversationWith: string;
@@ -24,7 +39,7 @@ export type TripCommunicationAccess = {
   canSendMessages: boolean;
   canSendCoordination: boolean;
   isRestricted: boolean;
-  restrictionReason: 'blocked_participant' | null;
+  restrictionReason: 'blocked_participant' | 'community_membership_required' | null;
   isActiveTrip: boolean;
 };
 
@@ -111,9 +126,22 @@ export async function getTripCommunicationAccessForUser(
   }
 
   const tripData = tripDoc.data()! as TripsRow;
+  const isActiveTrip = ['scheduled', 'full', 'in_progress'].includes(getEffectiveTripStatus(tripData));
+  const hasCommunityAccess = await isCommunityMember(userId, tripData.community_id, db);
+
+  if (!hasCommunityAccess) {
+    return {
+      canView: false,
+      canSendMessages: false,
+      canSendCoordination: false,
+      isRestricted: false,
+      restrictionReason: 'community_membership_required',
+      isActiveTrip,
+    };
+  }
+
   const participantBookings = await getTripParticipantBookings(db, tripId);
   const canView = canViewTripCommunication(userId, tripData, participantBookings);
-  const isActiveTrip = ['scheduled', 'full', 'in_progress'].includes(getEffectiveTripStatus(tripData));
 
   if (!canView) {
     return {
@@ -162,7 +190,10 @@ export async function canUserAccessChat(tripId: string): Promise<boolean> {
 /** Fetches messages for a specific trip */
 export async function getTripMessages(tripId: string): Promise<MessageWithSender[]> {
   const access = await getTripCommunicationAccess(tripId);
-  if (!access.canView) throw new UnauthorizedError();
+  if (!access.canView) {
+    logWarn('chat.read_denied', { tripId });
+    throw new UnauthorizedError();
+  }
 
   const db = getAdminFirestore();
   let snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>;
@@ -202,10 +233,20 @@ export async function sendTripMessage(tripId: string, content: string): Promise<
 
   const access = await getTripCommunicationAccessForUser(user.id, tripId);
   if (!access.canView) {
+    logWarn('chat.read_denied', {
+      tripId,
+      userId: user.id,
+      reason: 'cannot_view_trip_communication',
+    });
     throw new UnauthorizedError('Unauthorized to view this trip communication');
   }
 
   if (!access.canSendMessages) {
+    logWarn('chat.send_denied', {
+      tripId,
+      userId: user.id,
+      reason: access.restrictionReason ?? 'trip_read_only',
+    });
     if (access.restrictionReason === 'blocked_participant') {
       throw new UnauthorizedError('Free-text messaging is unavailable because a participant is blocked');
     }
@@ -214,14 +255,18 @@ export async function sendTripMessage(tripId: string, content: string): Promise<
   }
 
   const db = getAdminFirestore();
+  const userProfileDoc = await db.collection('users').doc(user.id).get();
+  const userProfile = userProfileDoc.data();
   const trimmedContent = content.trim();
+  const senderDisplayName = userProfile?.display_name ?? 'Someone';
+  const senderAvatarUrl = userProfile?.avatar_url ?? null;
   const ref = await db.collection('messages').add({
     trip_id: tripId,
     sender_id: user.id,
     content: trimmedContent,
     created_at: new Date().toISOString(),
-    sender_display_name: user.displayName ?? null,
-    sender_avatar_url: user.photoURL ?? null,
+    sender_display_name: senderDisplayName,
+    sender_avatar_url: senderAvatarUrl,
   });
 
   await trackEvent('message_sent', {
@@ -252,7 +297,7 @@ export async function sendTripMessage(tripId: string, content: string): Promise<
             userId: id,
             type: 'message',
             title: 'New trip message',
-            body: `${user.displayName ?? 'Someone'}: ${trimmedContent}`,
+            body: `${senderDisplayName}: ${trimmedContent}`,
             linkUrl: `/trips/${tripId}/chat`,
           })
         )
@@ -354,7 +399,12 @@ export async function getInboxThreads(): Promise<InboxThread[]> {
     threads.push({
       tripId,
       tripTitle: `${tripData.origin_name} to ${tripData.destination_name}`,
+      tripOrigin: tripData.origin_name,
+      tripDestination: tripData.destination_name,
       tripDate: tripData.departure_time,
+      communityName:
+        typeof tripData.community_name === 'string' ? tripData.community_name : null,
+      communityType: tripData.community_type === 'public' ? 'public' : 'verified',
       lastMessage,
       currentUserRole: tripData.role,
       conversationWith,

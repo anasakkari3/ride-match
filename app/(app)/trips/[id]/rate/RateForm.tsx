@@ -7,9 +7,34 @@ import { submitRating } from './actions';
 
 type Props = { tripId: string; driverId: string };
 
+const COPY = {
+  en: {
+    title: 'Rate this trip from 1 to 5',
+    optionalFeedback: 'Optional feedback',
+    feedbackHint: 'Keep it short. This helps explain the rating but is not required.',
+    feedbackPlaceholder: 'Share anything useful about the trip.',
+    stars: (count: number) => `${count} star${count === 1 ? '' : 's'}`,
+  },
+  ar: {
+    title: 'قيّم هذه الرحلة من 1 إلى 5',
+    optionalFeedback: 'ملاحظات اختيارية',
+    feedbackHint: 'اجعلها قصيرة. قد تساعد في توضيح التقييم لكنها ليست مطلوبة.',
+    feedbackPlaceholder: 'شارك أي ملاحظة مفيدة عن الرحلة.',
+    stars: (count: number) => `${count} نجوم`,
+  },
+  he: {
+    title: 'דרגו את הנסיעה הזאת מ־1 עד 5',
+    optionalFeedback: 'משוב אופציונלי',
+    feedbackHint: 'שמרו על זה קצר. זה יכול להסביר את הדירוג אבל לא חובה.',
+    feedbackPlaceholder: 'שתפו משהו מועיל על הנסיעה.',
+    stars: (count: number) => `${count} כוכבים`,
+  },
+} as const;
+
 export default function RateForm({ tripId, driverId }: Props) {
   const router = useRouter();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
+  const copy = COPY[lang];
   const [score, setScore] = useState(0);
   const [feedback, setFeedback] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,7 +62,7 @@ export default function RateForm({ tripId, driverId }: Props) {
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
         <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 text-center mb-3">
-          Rate this trip from 1 to 5
+          {copy.title}
         </p>
         <div className="flex gap-2 justify-center">
           {[1, 2, 3, 4, 5].map((n) => (
@@ -50,7 +75,7 @@ export default function RateForm({ tripId, driverId }: Props) {
                   ? 'bg-sky-600 dark:bg-sky-500 text-white'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
               }`}
-              aria-label={`${n} star${n === 1 ? '' : 's'}`}
+              aria-label={copy.stars(n)}
             >
               {n}
             </button>
@@ -66,17 +91,17 @@ export default function RateForm({ tripId, driverId }: Props) {
           htmlFor="rating-feedback"
           className="block text-sm font-semibold text-slate-900 dark:text-slate-100"
         >
-          Optional feedback
+          {copy.optionalFeedback}
         </label>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Keep it short. This helps explain the rating but is not required.
+          {copy.feedbackHint}
         </p>
         <textarea
           id="rating-feedback"
           rows={4}
           value={feedback}
           onChange={(e) => setFeedback(e.target.value)}
-          placeholder="Share anything useful about the trip."
+          placeholder={copy.feedbackPlaceholder}
           className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 resize-none"
         />
       </div>

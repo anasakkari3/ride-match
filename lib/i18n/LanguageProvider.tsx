@@ -1,13 +1,11 @@
 'use client';
 
 import { createContext, useContext, ReactNode } from 'react';
-import { dictionaries, Lang } from './dictionaries';
-
-type TranslationKey = keyof typeof dictionaries['en'];
+import { dictionaries, type DictKey, Lang } from './dictionaries';
 
 interface LanguageContextProps {
     lang: Lang;
-    t: (key: TranslationKey | (string & {})) => string;
+    t: (key: DictKey | (string & {})) => string;
 }
 
 const LanguageContext = createContext<LanguageContextProps>({
@@ -16,9 +14,9 @@ const LanguageContext = createContext<LanguageContextProps>({
 });
 
 export function LanguageProvider({ lang, children }: { lang: Lang; children: ReactNode }) {
-    const t = (key: TranslationKey | (string & {})): string => {
-        return (dictionaries[lang][key as TranslationKey] as string | undefined)
-            ?? (dictionaries['en'][key as TranslationKey] as string | undefined)
+    const t = (key: DictKey | (string & {})): string => {
+        return (dictionaries[lang][key as keyof typeof dictionaries['en']] as string | undefined)
+            ?? (dictionaries['en'][key as keyof typeof dictionaries['en']] as string | undefined)
             ?? key as string;
     };
 

@@ -1,12 +1,35 @@
 import { notFound, redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
 import { getTripById } from '@/lib/services/trip';
 import { getTripMessages, getTripCommunicationAccess } from '@/lib/services/message';
-import { Lang } from '@/lib/i18n/dictionaries';
 import ChatRoom from './ChatRoom';
 import { getCurrentUser } from '@/lib/auth/session';
 import { getEffectiveTripStatus } from '@/lib/trips/lifecycle';
+import { logWarn } from '@/lib/observability/logger';
 import Link from 'next/link';
+import CommunityBadge from '@/components/CommunityBadge';
+import { formatLocalizedDate, formatLocalizedTime } from '@/lib/i18n/locale';
+import { getServerI18n } from '@/lib/i18n/server';
+
+const COPY = {
+  en: {
+    backToTrip: 'Back to trip details',
+    driverRole: 'You are the driver',
+    passengerRole: 'You are a passenger',
+    frozen: (status: string) => `This trip is ${status}`,
+  },
+  ar: {
+    backToTrip: 'العودة إلى تفاصيل الرحلة',
+    driverRole: 'أنت السائق',
+    passengerRole: 'أنت راكب',
+    frozen: (status: string) => `هذه الرحلة ${status}`,
+  },
+  he: {
+    backToTrip: 'חזרה לפרטי הנסיעה',
+    driverRole: 'אתם הנהג',
+    passengerRole: 'אתם נוסע',
+    frozen: (status: string) => `הנסיעה הזאת ${status}`,
+  },
+} as const;
 
 export default async function TripChatPage({
   params,
@@ -14,14 +37,17 @@ export default async function TripChatPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const cookieStore = await cookies();
-  const langValue = cookieStore.get('NEXT_LOCALE')?.value as Lang | undefined;
-  const lang: Lang = langValue || 'en';
+  const { lang, t } = await getServerI18n();
+  const copy = COPY[lang];
   const user = await getCurrentUser();
   if (!user) redirect('/login');
 
   const communicationAccess = await getTripCommunicationAccess(id);
   if (!communicationAccess.canView) {
+    logWarn('chat.page_access_denied', {
+      tripId: id,
+      userId: user.id,
+    });
     redirect('/messages');
   }
 
@@ -38,9 +64,8 @@ export default async function TripChatPage({
   const isDriver = trip.driver_id === user.id;
   const effectiveStatus = getEffectiveTripStatus(trip);
   const isFrozen = effectiveStatus === 'completed' || effectiveStatus === 'cancelled';
-  const departureDate = new Date(trip.departure_time);
-  const dateString = departureDate.toLocaleDateString(lang, { weekday: 'short', month: 'short', day: 'numeric' });
-  const timeString = departureDate.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' });
+  const dateString = formatLocalizedDate(lang, trip.departure_time, { weekday: 'short', month: 'short', day: 'numeric' });
+  const timeString = formatLocalizedTime(lang, trip.departure_time);
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-900/50">
@@ -48,21 +73,22 @@ export default async function TripChatPage({
         <Link
           href={`/trips/${trip.id}`}
           className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-          aria-label="Back to trip details"
+          aria-label={copy.backToTrip}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="rtl:rotate-180">
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
         </Link>
         <div className="flex-1 min-w-0">
-          <h1 className="text-base font-bold text-slate-900 dark:text-slate-100 truncate">
-            {trip.origin_name} to {trip.destination_name}
+          <CommunityBadge name={trip.community_name} type={trip.community_type} compact />
+          <h1 className="text-base font-bold text-slate-900 dark:text-slate-100 truncate" dir="auto">
+            {trip.origin_name} → {trip.destination_name}
           </h1>
           <div className="flex items-center gap-2 text-xs font-medium mt-1">
-            <span className="text-sky-600 dark:text-sky-400">{dateString} at {timeString}</span>
+            <span className="text-sky-600 dark:text-sky-400">{dateString} • {timeString}</span>
             <span className="text-slate-300 dark:text-slate-600">|</span>
             <span className="text-slate-500 dark:text-slate-400">
-              {isDriver ? 'You are the driver' : 'You are a passenger'}
+              {isDriver ? copy.driverRole : copy.passengerRole}
             </span>
           </div>
         </div>
@@ -70,7 +96,7 @@ export default async function TripChatPage({
 
       {isFrozen && (
         <div className="shrink-0 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-widest text-center py-2 border-b border-slate-200 dark:border-slate-700">
-          This trip is {effectiveStatus}
+          {copy.frozen(t(effectiveStatus))}
         </div>
       )}
 
