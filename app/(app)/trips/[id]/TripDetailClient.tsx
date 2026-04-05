@@ -23,6 +23,7 @@ import { getEffectiveTripStatus } from '@/lib/trips/lifecycle';
 import { canStartTrip, canCompleteTrip } from '@/lib/trips/lifecycle-permissions';
 import { DriverTrustSummary } from '@/app/(app)/DriverTrustSummary';
 import CommunityBadge from '@/components/CommunityBadge';
+import EmptyStateCard from '@/components/EmptyStateCard';
 import { canDisplayDriverCancelAction } from '@/lib/trips/coordination';
 import TripCoordinationPanel from './TripCoordinationPanel';
 import ReportUserModal from './ReportUserModal';
@@ -40,6 +41,49 @@ type Props = {
   };
   wasJustCreated?: boolean;
 };
+
+const SURFACE_COPY = {
+  en: {
+    communicationReady: 'Trip communication',
+    communicationReadOnly: 'Trip updates',
+    communicationReadyDesc:
+      'Open the trip thread for pickup notes, structured updates, and any last-minute coordination.',
+    communicationRestrictedDesc:
+      'Direct chat is limited on this trip, but structured updates and cancellations still appear in the same thread.',
+    communicationReadOnlyDesc:
+      'Open the thread to review trip updates, coordination signals, and cancellations in one place.',
+    passengerListHint: 'Confirmed riders and cancellations appear here as this trip changes.',
+    rosterEmptyTitle: 'No passengers yet',
+    rosterEmptyDesc:
+      'This trip is already live in the community. Seats will appear here as riders book.',
+  },
+  ar: {
+    communicationReady: 'تواصل الرحلة',
+    communicationReadOnly: 'تحديثات الرحلة',
+    communicationReadyDesc:
+      'افتح محادثة الرحلة لملاحظات الالتقاء والتحديثات المنظمة وأي تنسيق أخير قبل الانطلاق.',
+    communicationRestrictedDesc:
+      'الدردشة المباشرة محدودة في هذه الرحلة، لكن التحديثات المنظمة وعمليات الإلغاء ما زالت تظهر في نفس المحادثة.',
+    communicationReadOnlyDesc:
+      'افتح المحادثة لمراجعة تحديثات الرحلة وإشارات التنسيق وعمليات الإلغاء في مكان واحد.',
+    passengerListHint: 'تظهر هنا الحجوزات المؤكدة وعمليات الإلغاء كلما تغيّرت الرحلة.',
+    rosterEmptyTitle: 'لا يوجد ركاب بعد',
+    rosterEmptyDesc: 'هذه الرحلة منشورة الآن داخل المجتمع. ستظهر المقاعد هنا عندما يبدأ الركاب بالحجز.',
+  },
+  he: {
+    communicationReady: 'תקשורת נסיעה',
+    communicationReadOnly: 'עדכוני נסיעה',
+    communicationReadyDesc:
+      'פתחו את שרשור הנסיעה להערות איסוף, עדכונים מובנים וכל תיאום של הרגע האחרון.',
+    communicationRestrictedDesc:
+      'הצ׳אט הישיר מוגבל בנסיעה הזאת, אבל עדכונים מובנים וביטולים עדיין מופיעים באותו שרשור.',
+    communicationReadOnlyDesc:
+      'פתחו את השרשור כדי לעבור על עדכוני נסיעה, סימוני תיאום וביטולים במקום אחד.',
+    passengerListHint: 'נוסעים מאושרים וביטולים יופיעו כאן ככל שהנסיעה תשתנה.',
+    rosterEmptyTitle: 'עדיין אין נוסעים',
+    rosterEmptyDesc: 'הנסיעה כבר פעילה בקהילה. מושבים יופיעו כאן ברגע שמישהו יזמין.',
+  },
+} as const;
 
 function formatDeparture(isoString: string, lang: Lang, t: (key: string) => string) {
   const departure = new Date(isoString);
@@ -115,6 +159,11 @@ function passengerFromBookingSnapshot(booking: BookingWithPassenger) {
   };
 }
 
+function getParticipantInitial(name: string | null | undefined, fallback: string) {
+  const initial = name?.trim().charAt(0);
+  return (initial || fallback || 'P').toUpperCase();
+}
+
 export default function TripDetailClient({
   trip: initialTrip,
   bookings: initialBookings,
@@ -124,6 +173,7 @@ export default function TripDetailClient({
 }: Props) {
   const { t, lang } = useTranslation();
   const copy = DETAIL_COPY[lang] ?? DETAIL_COPY.en;
+  const surfaceCopy = SURFACE_COPY[lang] ?? SURFACE_COPY.en;
   const [trip, setTrip] = useState(initialTrip);
   const [bookings, setBookings] = useState(initialBookings);
   const [loading, setLoading] = useState(false);
@@ -625,11 +675,37 @@ export default function TripDetailClient({
 
       {canViewTripUpdates && (
         <Link
-        href={`/trips/${trip.id}/chat`}
-        data-testid="open-trip-chat-link"
-        className="block rounded-2xl border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 px-4 py-3 text-sm font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-slate-800 transition-colors"
-      >
-          {canSendTripMessages ? copy.openTripCommunication : copy.openTripUpdates}
+          href={`/trips/${trip.id}/chat`}
+          data-testid="open-trip-chat-link"
+          className="block rounded-3xl border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 p-4 shadow-sm card-hover transition-colors"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sky-600 ring-1 ring-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:ring-sky-800">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 10h10" />
+                <path d="M7 14h6" />
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-sky-600 dark:text-sky-300">
+                {canSendTripMessages ? surfaceCopy.communicationReady : surfaceCopy.communicationReadOnly}
+              </p>
+              <h3 className="mt-1 text-base font-bold text-slate-900 dark:text-slate-100">
+                {canSendTripMessages ? copy.openTripCommunication : copy.openTripUpdates}
+              </h3>
+              <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                {canSendTripMessages
+                  ? surfaceCopy.communicationReadyDesc
+                  : isCommunicationRestricted
+                    ? surfaceCopy.communicationRestrictedDesc
+                    : surfaceCopy.communicationReadOnlyDesc}
+              </p>
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-slate-400 rtl:rotate-180">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </div>
         </Link>
       )}
 
@@ -729,50 +805,83 @@ export default function TripDetailClient({
         </div>
       )}
 
-      {(isDriver || hasBooked) && bookings.length > 0 && (
+      {(isDriver || hasBooked) && (bookings.length > 0 || isDriver) && (
         <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-sm">
-          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
-            {t('passengers')} | {confirmedBookings.length}
-          </h2>
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {bookings.map((booking) => {
-              const isPassengerCancelled = booking.status === 'cancelled';
-              return (
-                <div key={booking.id} className={`flex items-center justify-between py-3 first:pt-0 last:pb-0 ${isPassengerCancelled ? 'opacity-60' : ''}`}>
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                      isPassengerCancelled
-                        ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
-                        : 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300'
-                    }`}>
-                      {copy.passengerInitial}
-                    </div>
-                    <div>
-                      <span
-                        className={`text-sm font-medium ${isPassengerCancelled ? 'line-through text-slate-500' : 'text-slate-700 dark:text-slate-300'}`}
-                        dir="auto"
-                      >
-                        {booking.passenger?.display_name ?? copy.communityMember}
-                      </span>
-                      {isPassengerCancelled && (
-                        <span className="ml-2 text-[10px] font-bold text-red-600 bg-red-100 dark:bg-red-900/20 px-1.5 py-0.5 rounded">
-                          {t('cancelled')}
-                        </span>
-                      )}
-                      {isPassengerCancelled && booking.cancelled_at && (
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
-                          {formatLocalizedDateTime(lang, booking.cancelled_at)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                    {formatSeatCount(booking.seats, t)}
-                  </span>
-                </div>
-              );
-            })}
+          <div className="mb-4">
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+              {t('passengers')} | {confirmedBookings.length}
+            </h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+              {surfaceCopy.passengerListHint}
+            </p>
           </div>
+
+          {bookings.length === 0 ? (
+            <EmptyStateCard
+              title={surfaceCopy.rosterEmptyTitle}
+              description={surfaceCopy.rosterEmptyDesc}
+              icon={
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+              }
+              className="border-dashed bg-slate-50/70 dark:bg-slate-950/30"
+            />
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {bookings.map((booking) => {
+                const isPassengerCancelled = booking.status === 'cancelled';
+                const passengerName = booking.passenger?.display_name ?? copy.communityMember;
+                return (
+                  <div key={booking.id} className={`flex items-center justify-between py-3 first:pt-0 last:pb-0 ${isPassengerCancelled ? 'opacity-60' : ''}`}>
+                    <div className="flex items-center gap-3">
+                      {booking.passenger?.avatar_url ? (
+                        <Image
+                          src={booking.passenger.avatar_url}
+                          alt={passengerName}
+                          width={32}
+                          height={32}
+                          className="h-8 w-8 rounded-full border border-slate-200 object-cover dark:border-slate-700"
+                        />
+                      ) : (
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                          isPassengerCancelled
+                            ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                            : 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300'
+                        }`}>
+                          {getParticipantInitial(booking.passenger?.display_name, copy.passengerInitial)}
+                        </div>
+                      )}
+                      <div>
+                        <span
+                          className={`text-sm font-medium ${isPassengerCancelled ? 'line-through text-slate-500' : 'text-slate-700 dark:text-slate-300'}`}
+                          dir="auto"
+                        >
+                          {passengerName}
+                        </span>
+                        {isPassengerCancelled && (
+                          <span className="ml-2 text-[10px] font-bold text-red-600 bg-red-100 dark:bg-red-900/20 px-1.5 py-0.5 rounded">
+                            {t('cancelled')}
+                          </span>
+                        )}
+                        {isPassengerCancelled && booking.cancelled_at && (
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                            {formatLocalizedDateTime(lang, booking.cancelled_at)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                      {formatSeatCount(booking.seats, t)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

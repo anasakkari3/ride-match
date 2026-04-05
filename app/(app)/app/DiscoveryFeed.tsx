@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { normalizeLocationName } from '@/lib/utils/locations';
+import EmptyStateCard from '@/components/EmptyStateCard';
 import type { TripWithDriver } from '@/lib/types';
 import { TripCard } from './TripCard';
 
@@ -58,28 +59,35 @@ export default function DiscoveryFeed({
 
   if (trips.length === 0) {
     return (
-      <div className="rounded-3xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-6 text-center shadow-sm">
-        <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center text-xl mx-auto mb-3 shadow-sm">
-          +
-        </div>
-        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-1">
-          {copy.noTripsTitle}
-        </h3>
-        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-[240px] mx-auto mb-4">
-          {copy.noTripsDesc}
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <Link
-            href={createHref}
-            className="inline-block rounded-xl bg-sky-600 hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600 text-white px-5 py-2.5 text-sm font-bold transition-colors btn-press shadow-sm"
-          >
-            {t('offer_ride')}
-          </Link>
-          <Link href={browseHref} className="text-sm font-bold text-slate-600 dark:text-slate-300 hover:underline">
-            {copy.refreshLater}
-          </Link>
-        </div>
-      </div>
+      <EmptyStateCard
+        eyebrow={copy.upcomingRides}
+        title={copy.noTripsTitle}
+        description={copy.noTripsDesc}
+        className="animate-fade-in-up"
+        icon={
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 16H9m10 0h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 9.6 16 9 16 9s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 11v4c0 .6.4 1 1 1h2" />
+            <circle cx="7" cy="16" r="2" />
+            <circle cx="17" cy="16" r="2" />
+          </svg>
+        }
+        actions={
+          <>
+            <Link
+              href={createHref}
+              className="inline-flex items-center justify-center rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600"
+            >
+              {t('offer_ride')}
+            </Link>
+            <Link
+              href={browseHref}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              {copy.refreshLater}
+            </Link>
+          </>
+        }
+      />
     );
   }
 
@@ -130,7 +138,7 @@ export default function DiscoveryFeed({
         </section>
       )}
 
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-4 py-3">
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-4 py-4 shadow-sm">
         <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
           {copy.needDifferentRoute}
         </p>

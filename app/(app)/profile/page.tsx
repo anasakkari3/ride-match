@@ -67,7 +67,7 @@ export default async function ProfilePage() {
         </Link>
       </div>
 
-      <div className="animate-fade-in-up rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <div className="animate-fade-in-up rounded-2xl border border-slate-200 bg-white p-5 shadow-elevated dark:border-slate-800 dark:bg-slate-900/80">
         <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">{copy.trustTitle}</p>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <DriverTrustSummary

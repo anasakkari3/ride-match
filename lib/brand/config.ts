@@ -13,15 +13,15 @@ const BRAND_DISPLAY_NAMES: Record<Lang, string> = {
 
 const BRAND_LOGOS: Record<Lang, BrandLogoAsset> = {
   en: {
-    src: '/brand/logo-onway.svg',
+    src: '/brand/logo-onway.png',
     alt: 'OnWay logo',
   },
   ar: {
-    src: '/brand/logo-ar.svg',
+    src: '/brand/logo-ar.png',
     alt: 'شعار بطريقك',
   },
   he: {
-    src: '/brand/logo-onway.svg',
+    src: '/brand/logo-onway.png',
     alt: 'לוגו OnWay',
   },
 };

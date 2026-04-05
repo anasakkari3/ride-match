@@ -9,6 +9,7 @@ import {
   getUpcomingTripsForCommunities,
 } from '@/lib/services/trip';
 import CommunityBadge from '@/components/CommunityBadge';
+import EmptyStateCard from '@/components/EmptyStateCard';
 import PwaInstallPrompt from '../PwaInstallPrompt';
 import InlineSearch from '../InlineSearch';
 import SearchResults from './SearchResults';
@@ -221,18 +222,19 @@ export default async function HomePage(props: {
     <div className="pb-8 space-y-6">
       <PwaInstallPrompt />
 
-      <div className="relative bg-gradient-to-br from-sky-600 via-sky-600 to-cyan-700 pt-8 pb-16 px-4 -mt-16 w-full max-w-lg mx-auto overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl transform translate-x-1/3 -translate-y-1/3" />
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-cyan-300 opacity-10 rounded-full blur-2xl transform -translate-x-1/2 translate-y-1/2" />
+      <div className="relative bg-gradient-to-br from-sky-600 via-sky-600 to-cyan-700 dark:from-sky-800 dark:via-slate-900 dark:to-slate-950 pt-8 pb-16 px-4 -mt-16 w-full max-w-lg mx-auto overflow-hidden">
+        <div className="absolute top-0 right-0 w-72 h-72 bg-white opacity-[0.06] rounded-full blur-3xl transform translate-x-1/3 -translate-y-1/3" />
+        <div className="absolute bottom-0 left-0 w-56 h-56 bg-cyan-300 opacity-[0.08] rounded-full blur-3xl transform -translate-x-1/2 translate-y-1/2" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-sky-400/5 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 pt-16 animate-fade-in-up">
-          <p className="text-sky-100 text-sm font-medium mb-1" dir="auto">
+          <p className="text-sky-200/80 text-xs font-semibold uppercase tracking-widest mb-2" dir="auto">
             {heroScopeLabel}
           </p>
-          <h1 className="text-3xl font-bold text-white tracking-tight drop-shadow-sm">
+          <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
             {heroTitle}
           </h1>
-          <p className="text-sky-100 text-sm mt-2 max-w-[320px] leading-relaxed">
+          <p className="text-sky-100/80 text-sm mt-2 max-w-[320px] leading-relaxed">
             {isSearchActive
               ? selectedCommunity
                 ? copy.searchScoped(selectedCommunity.name)
@@ -312,14 +314,18 @@ export default async function HomePage(props: {
         )}
 
         {isSearchActive && !selectedCommunity && hasMultipleCommunities && (
-          <div className="rounded-3xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20 p-6 text-center shadow-sm">
-            <h3 className="text-sm font-bold text-amber-900 dark:text-amber-300">
-              {copy.chooseCommunityToSearch}
-            </h3>
-            <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed max-w-[280px] mx-auto mt-2">
-              {copy.chooseCommunityToSearchDesc}
-            </p>
-          </div>
+          <EmptyStateCard
+            tone="amber"
+            eyebrow={copy.scopeTitle}
+            title={copy.chooseCommunityToSearch}
+            description={copy.chooseCommunityToSearchDesc}
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+            }
+          />
         )}
 
         {!isSearchActive && (
@@ -334,7 +340,7 @@ export default async function HomePage(props: {
 
               <Link
                 href={createTripHref}
-                className="block rounded-3xl bg-slate-900 dark:bg-slate-800 p-5 shadow-lg card-hover relative overflow-hidden group"
+                className="block rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 dark:from-slate-800 dark:to-slate-900 p-5 shadow-lg card-hover relative overflow-hidden group ring-1 ring-white/5"
               >
                 <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500 opacity-20 rounded-full blur-3xl group-hover:opacity-30 transition-opacity ltr:translate-x-1/3 ltr:-translate-y-1/3 rtl:-translate-x-1/3 rtl:-translate-y-1/3" />
                 <div className="absolute bottom-0 left-0 w-24 h-24 bg-emerald-500 opacity-20 rounded-full blur-2xl ltr:-translate-x-1/3 ltr:translate-y-1/3 rtl:translate-x-1/3 rtl:translate-y-1/3" />
@@ -458,19 +464,28 @@ export default async function HomePage(props: {
         )}
 
         {joinedCommunities.length === 0 && (
-          <div className="text-center pt-2">
-            <div className="rounded-3xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/20 p-6">
-              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center text-2xl mx-auto mb-3">+</div>
-              <p className="text-sm text-amber-900 dark:text-amber-400 font-semibold">{t('no_community')}</p>
-              <p className="text-xs text-amber-700 dark:text-amber-500 mt-1 mb-4">{t('no_community_desc')}</p>
+          <EmptyStateCard
+            tone="amber"
+            eyebrow={copy.scopeTitle}
+            title={t('no_community')}
+            description={t('no_community_desc')}
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M19 8v6" />
+                <path d="M22 11h-6" />
+              </svg>
+            }
+            actions={
               <Link
                 href="/community"
-                className="inline-block rounded-xl bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors btn-press"
+                className="inline-flex items-center justify-center rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500"
               >
                 {t('join_community')}
               </Link>
-            </div>
-          </div>
+            }
+          />
         )}
       </div>
     </div>

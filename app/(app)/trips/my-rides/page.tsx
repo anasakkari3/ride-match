@@ -1,11 +1,32 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import CommunityBadge from '@/components/CommunityBadge';
+import EmptyStateCard from '@/components/EmptyStateCard';
 import { getCurrentUser } from '@/lib/auth/session';
 import { getServerI18n } from '@/lib/i18n/server';
 import { formatLocalizedDateTime, formatSeatAvailability } from '@/lib/i18n/locale';
 import { getMyTripsAsDriver, getMyBookings } from '@/lib/services/trip';
 import { getTripStatusPresentationWithTranslation } from '@/lib/trips/presentation';
+
+function PassengerIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 9a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a1.5 1.5 0 0 0 0 3v3a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a1.5 1.5 0 0 0 0-3Z" />
+      <path d="M13 7v10" />
+    </svg>
+  );
+}
+
+function DriverIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 16H9m10 0h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 9.6 16 9 16 9s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 11v4c0 .6.4 1 1 1h2" />
+      <circle cx="7" cy="16" r="2" />
+      <path d="M9 16h6" />
+      <circle cx="17" cy="16" r="2" />
+    </svg>
+  );
+}
 
 export default async function MyRidesPage() {
   const user = await getCurrentUser();
@@ -18,34 +39,51 @@ export default async function MyRidesPage() {
 
   return (
     <div className="p-4 max-w-lg mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{t('my_rides')}</h1>
-
-      {myBookings.length === 0 && myTrips.length === 0 ? (
-        <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-8 text-center shadow-sm">
-          <div className="w-16 h-16 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center text-2xl mx-auto mb-4">
-            📨
+      <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('my_rides')}</h1>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 dark:border-sky-800/60 dark:bg-sky-900/20">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-sky-700 dark:text-sky-300">
+              {t('passenger')}
+            </p>
+            <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">
+              {myBookings.length}
+            </p>
           </div>
-          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">
-            {t('no_joined_rides')}
-          </h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-[240px] mx-auto mb-8">
-            {t('no_joined_rides_desc')}
-          </p>
-          <div className="flex flex-col gap-3">
-            <Link
-              href="/app"
-              className="w-full rounded-xl bg-sky-600 dark:bg-sky-500 hover:bg-sky-700 dark:hover:bg-sky-600 text-white px-6 py-3.5 text-sm font-bold shadow-sm transition-colors btn-press"
-            >
-              {t('find_a_ride')}
-            </Link>
-            <Link
-              href="/trips/new"
-              className="w-full rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-6 py-3.5 text-sm font-bold text-slate-700 dark:text-slate-300 shadow-sm transition-colors btn-press hover:bg-slate-50 dark:hover:bg-slate-700"
-            >
-              {t('create_a_ride')}
-            </Link>
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-800/60 dark:bg-emerald-900/20">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+              {t('driver')}
+            </p>
+            <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">
+              {myTrips.length}
+            </p>
           </div>
         </div>
+      </section>
+
+      {myBookings.length === 0 && myTrips.length === 0 ? (
+        <EmptyStateCard
+          eyebrow={t('my_rides')}
+          title={t('no_joined_rides')}
+          description={t('no_joined_rides_desc')}
+          icon={<DriverIcon />}
+          actions={
+            <>
+              <Link
+                href="/app"
+                className="inline-flex items-center justify-center rounded-xl bg-sky-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600"
+              >
+                {t('find_a_ride')}
+              </Link>
+              <Link
+                href="/trips/new"
+                className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                {t('create_a_ride')}
+              </Link>
+            </>
+          }
+        />
       ) : (
         <div className="space-y-4">
           {myBookings.length > 0 && (
@@ -64,8 +102,10 @@ export default async function MyRidesPage() {
                       className="block rounded-3xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm card-hover relative overflow-hidden group"
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl text-xl shrink-0 ${statusUi.accentClassName}`}>
-                          🎫
+                        <div
+                          className={`flex h-12 w-12 items-center justify-center rounded-2xl shrink-0 ${statusUi.accentClassName}`}
+                        >
+                          <PassengerIcon />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 justify-between">
@@ -93,7 +133,9 @@ export default async function MyRidesPage() {
                           </div>
                         </div>
                         <span className="text-slate-300 dark:text-slate-600 shrink-0 group-hover:text-sky-500 transition-colors">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="rtl:rotate-180"><polyline points="9 18 15 12 9 6" /></svg>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="rtl:rotate-180">
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
                         </span>
                       </div>
                     </Link>
@@ -119,8 +161,10 @@ export default async function MyRidesPage() {
                       className="block rounded-3xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm card-hover relative overflow-hidden group"
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl text-xl shrink-0 ${statusUi.accentClassName}`}>
-                          🚗
+                        <div
+                          className={`flex h-12 w-12 items-center justify-center rounded-2xl shrink-0 ${statusUi.accentClassName}`}
+                        >
+                          <DriverIcon />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 justify-between">
@@ -148,7 +192,9 @@ export default async function MyRidesPage() {
                           </div>
                         </div>
                         <span className="text-slate-300 dark:text-slate-600 shrink-0 group-hover:text-emerald-500 transition-colors">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="rtl:rotate-180"><polyline points="9 18 15 12 9 6" /></svg>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="rtl:rotate-180">
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
                         </span>
                       </div>
                     </Link>

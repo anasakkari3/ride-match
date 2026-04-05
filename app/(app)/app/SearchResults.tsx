@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { searchTrips } from '@/lib/services/matching';
+import EmptyStateCard from '@/components/EmptyStateCard';
 import { TripCard } from './TripCard';
 
 type SearchResultsProps = {
@@ -82,47 +83,62 @@ export default async function SearchResults({
 
   if (totalResults === 0) {
     return (
-      <div className="space-y-4 animate-fade-in-up mt-2">
-        <div className="rounded-3xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/20 p-6 text-center shadow-sm">
-          <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center text-xl mx-auto mb-3">
-            R
-          </div>
-          <h3 className="text-sm font-bold text-amber-900 dark:text-amber-400 mb-1">
-            {copy.noTripsFound}
-          </h3>
-          <p className="text-xs text-amber-700 dark:text-amber-500 leading-relaxed max-w-[260px] mx-auto mb-4">
-            {copy.noTripsDesc}
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-3">
+      <EmptyStateCard
+        eyebrow={copy.routeTrips}
+        title={copy.noTripsFound}
+        description={copy.noTripsDesc}
+        tone="amber"
+        className="mt-2 animate-fade-in-up"
+        icon={
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="6.5" cy="6.5" r="2.5" />
+            <circle cx="17.5" cy="17.5" r="2.5" />
+            <path d="M8.5 8.5 15 15" />
+            <path d="M9 17.5h4" />
+          </svg>
+        }
+        actions={
+          <>
             <Link
               href={browseHref}
-              className="text-sm font-bold text-slate-700 dark:text-slate-200 hover:underline"
+              className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               {copy.browseAll}
             </Link>
             <Link
               href={createHref}
-              className="inline-block rounded-xl bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500 text-white px-5 py-2.5 text-sm font-bold transition-colors btn-press shadow-sm"
+              className="inline-flex items-center justify-center rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500"
             >
               {copy.createInstead}
             </Link>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
     );
   }
 
   if (exactMatches.length === 0 && recommendations.length > 0) {
     return (
       <div className="space-y-5 animate-fade-in-up mt-2">
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-4 py-3">
-          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-            {copy.noExactTrip}
-          </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            {copy.showingSimilar(recommendations.length)}
-          </p>
-          <div className="flex flex-wrap gap-3 mt-3">
+        <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-5 py-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-slate-600 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+                <path d="M8 11h6" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {copy.noExactTrip}
+              </p>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                {copy.showingSimilar(recommendations.length)}
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
             <Link href={browseHref} className="text-sm font-bold text-sky-600 dark:text-sky-400 hover:underline">
               {copy.browseAll}
             </Link>
@@ -196,7 +212,7 @@ export default async function SearchResults({
         </section>
       )}
 
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-4 py-3">
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-4 py-4 shadow-sm">
         <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
           {copy.wrongTime}
         </p>

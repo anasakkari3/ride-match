@@ -52,12 +52,40 @@ function describeTrust(community: CommunityInfo, copy: (typeof COMMUNITY_EXPLORE
   return copy.verifiedTrust;
 }
 
+const TRUST_GUIDE_COPY = {
+  en: {
+    title: 'How community trust works',
+    approvalDescription:
+      'Approval-required communities review requests before new members can browse or post rides there.',
+    verifiedLabel: 'Verified communities',
+    publicLabel: 'Public communities',
+    approvalLabel: 'Approval flow',
+  },
+  ar: {
+    title: 'كيف تعمل الثقة في المجتمعات',
+    approvalDescription:
+      'تراجع المجتمعات التي تتطلب موافقة طلبات الانضمام قبل أن يتمكن الأعضاء الجدد من التصفح أو نشر الرحلات هناك.',
+    verifiedLabel: 'المجتمعات الموثقة',
+    publicLabel: 'المجتمعات العامة',
+    approvalLabel: 'آلية الموافقة',
+  },
+  he: {
+    title: 'איך פועל אמון בקהילות',
+    approvalDescription:
+      'קהילות שדורשות אישור בודקות בקשות הצטרפות לפני שחברים חדשים יכולים לעיין או לפרסם שם נסיעות.',
+    verifiedLabel: 'קהילות מאומתות',
+    publicLabel: 'קהילות ציבוריות',
+    approvalLabel: 'תהליך אישור',
+  },
+} as const;
+
 export default function CommunityExplorer({
   joinedCommunities: initialJoinedCommunities,
   exploreCommunities: initialExploreCommunities,
 }: Props) {
   const { lang } = useTranslation();
   const copy = COMMUNITY_EXPLORER_COPY[lang] ?? COMMUNITY_EXPLORER_COPY.en;
+  const trustGuideCopy = TRUST_GUIDE_COPY[lang] ?? TRUST_GUIDE_COPY.en;
   const router = useRouter();
   const [joinedCommunities, setJoinedCommunities] = useState(initialJoinedCommunities);
   const [exploreCommunities, setExploreCommunities] = useState(initialExploreCommunities);
@@ -278,6 +306,48 @@ export default function CommunityExplorer({
             {error}
           </div>
         )}
+
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                {copy.explore}
+              </p>
+              <h2 className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">
+                {trustGuideCopy.title}
+              </h2>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 dark:border-sky-800/60 dark:bg-sky-900/20">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {trustGuideCopy.verifiedLabel}
+              </p>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                {copy.verifiedTrust}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 dark:border-amber-800/60 dark:bg-amber-900/20">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {trustGuideCopy.publicLabel}
+              </p>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                {copy.lowerTrust}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/60">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {trustGuideCopy.approvalLabel}
+              </p>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                {trustGuideCopy.approvalDescription}
+              </p>
+            </div>
+          </div>
+        </section>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-center justify-between gap-3">

@@ -76,11 +76,11 @@ export function TripCard(props: { trip: TripCardTrip; t?: (k: string) => string;
   return (
     <Link
       href={`/trips/${trip.id}`}
-      className="block rounded-3xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm card-hover relative overflow-hidden group animate-fade-in-up"
+      className="block rounded-3xl border border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900/80 shadow-sm card-hover relative overflow-hidden group animate-fade-in-up"
     >
-      <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-full ${isToday ? 'bg-amber-400 dark:bg-amber-500' : 'bg-sky-200 dark:bg-sky-800'}`} />
+      <div className={`absolute top-4 bottom-4 w-1 rounded-full transition-all duration-300 group-hover:w-1.5 ltr:left-0 rtl:right-0 ${isToday ? 'bg-amber-400 dark:bg-amber-500' : 'bg-sky-300 dark:bg-sky-700'}`} />
 
-      <div className="pl-5 pr-4 pt-4 pb-4 space-y-3">
+      <div className="space-y-3 px-4 pt-4 pb-4 ltr:pl-5 rtl:pr-5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <CommunityBadge

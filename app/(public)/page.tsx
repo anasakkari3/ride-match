@@ -21,18 +21,21 @@ export default async function PublicLandingPage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 font-sans flex flex-col">
-      <header className="fixed top-0 left-0 right-0 z-50 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
-          <Link href="/" className="flex items-center group">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/70 bg-white/88 shadow-sm backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/86">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+          <Link href="/" className="group flex min-w-0 shrink-0 items-center rounded-2xl max-w-[48vw] sm:max-w-none" aria-label={t('home')}>
             <BrandLogo
               lang={lang}
               size="nav"
               priority
-              className="h-10 w-auto transition-transform duration-200 group-hover:scale-[1.02]"
+              className="transition-transform duration-200 group-hover:scale-[1.02]"
             />
           </Link>
-          <div className="flex items-center gap-4">
-            <Link href="/app" className="rounded-xl bg-sky-600 dark:bg-sky-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-sky-700 dark:hover:bg-sky-600 transition-colors btn-press shadow-sm">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link href="/login" className="hidden sm:inline-flex rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors">
+              {t('sign_in') || 'Sign in'}
+            </Link>
+            <Link href="/app" className="btn-primary rounded-2xl px-4 py-2.5 text-sm font-bold shadow-md sm:px-5">
               {t('get_started')}
             </Link>
           </div>
@@ -40,76 +43,88 @@ export default async function PublicLandingPage() {
       </header>
 
       <main className="flex-1 pt-16">
-        <section className="relative bg-gradient-to-b from-sky-50 to-white dark:from-slate-900 dark:to-slate-950 pt-24 pb-20 sm:pt-32 sm:pb-28 px-4 overflow-hidden">
-          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-sky-300/20 dark:bg-sky-500/10 rounded-full blur-3xl transform translate-x-1/3 -translate-y-1/3 pointer-events-none" />
-          <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-emerald-300/10 dark:bg-emerald-500/5 rounded-full blur-3xl transform -translate-x-1/3 translate-y-1/3 pointer-events-none" />
+        <section className="relative bg-gradient-to-b from-sky-50 via-white to-white dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 pt-28 pb-24 sm:pt-40 sm:pb-32 px-4 overflow-hidden">
+          <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-sky-300/20 dark:bg-sky-500/10 rounded-full blur-[100px] transform translate-x-1/3 -translate-y-1/3 pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-cyan-300/15 dark:bg-cyan-500/5 rounded-full blur-[100px] transform -translate-x-1/3 translate-y-1/3 pointer-events-none" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-radial from-sky-200/10 to-transparent dark:from-sky-800/5 rounded-full pointer-events-none" />
 
           <div className="max-w-4xl mx-auto text-center relative z-10">
-            <div className="mb-6 flex justify-center animate-fade-in-up">
-              <BrandLogo lang={lang} size="hero" priority className="h-16 sm:h-20 w-auto" />
+            <div className="mb-8 flex justify-center animate-fade-in-up">
+              <BrandLogo lang={lang} size="hero" priority />
             </div>
-            <h1 className="text-4xl sm:text-6xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-6 animate-fade-in-up">
+            <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-6 animate-fade-in-up leading-[1.1]">
               {t('landing_hero_title')}
             </h1>
-            <p className="text-lg sm:text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto mb-10 animate-fade-in-up stagger-1 leading-relaxed">
+            <p className="text-lg sm:text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto mb-12 animate-fade-in-up stagger-1 leading-relaxed">
               {t('landing_hero_subtitle')}
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in-up stagger-2">
-              <Link href="/app" className="w-full sm:w-auto rounded-2xl bg-sky-600 dark:bg-sky-500 px-8 py-4 text-lg font-bold text-white shadow-lg hover:bg-sky-700 dark:hover:bg-sky-600 hover:shadow-xl transition-all btn-press">
+              <Link href="/app" className="w-full sm:w-auto btn-primary rounded-2xl px-10 py-4 text-lg font-bold shadow-lg">
                 {t('get_started')}
               </Link>
-              <a href="#how-it-works" className="w-full sm:w-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-8 py-4 text-lg font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors btn-press hidden sm:block">
+              <a href="#how-it-works" className="w-full sm:w-auto rounded-2xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200 dark:border-slate-700 px-8 py-4 text-lg font-bold text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 transition-all btn-press hidden sm:block">
                 {t('learn_more')}
               </a>
             </div>
           </div>
         </section>
 
-        <section id="how-it-works" className="py-20 px-4 bg-white dark:bg-slate-950">
+        <section id="how-it-works" className="py-24 px-4 bg-white dark:bg-slate-950">
           <div className="max-w-6xl mx-auto">
-            <h2 className="text-3xl font-bold text-center text-slate-900 dark:text-white mb-16">{t('how_it_works')}</h2>
-            <div className="grid sm:grid-cols-3 gap-10 sm:gap-6 relative">
-              <div className="hidden sm:block absolute top-[45px] left-[15%] right-[15%] h-[2px] bg-slate-100 dark:bg-slate-800 -z-10" />
+            <div className="text-center mb-16">
+              <p className="text-sm font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest mb-3">{t('how_it_works')}</p>
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white">{t('how_it_works')}</h2>
+            </div>
+            <div className="grid sm:grid-cols-3 gap-10 sm:gap-8 relative">
+              <div className="hidden sm:block absolute top-[44px] left-[20%] right-[20%] h-[2px] bg-gradient-to-r from-sky-200 via-emerald-200 to-amber-200 dark:from-sky-800 dark:via-emerald-800 dark:to-amber-800 -z-10" />
 
-              <div className="text-center">
-                <div className="w-20 h-20 mx-auto bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 rounded-2xl flex items-center justify-center text-3xl font-bold mb-6 shadow-sm">1</div>
+              <div className="text-center group">
+                <div className="w-20 h-20 mx-auto bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/50 dark:to-sky-900/20 text-sky-600 dark:text-sky-400 rounded-2xl flex items-center justify-center text-3xl font-bold mb-6 shadow-sm ring-1 ring-sky-200/50 dark:ring-sky-800/50 group-hover:scale-105 transition-transform duration-300">1</div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">{t('step_1_title')}</h3>
-                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">{t('step_1_desc')}</p>
+                <p className="text-slate-600 dark:text-slate-400 leading-relaxed max-w-[280px] mx-auto">{t('step_1_desc')}</p>
               </div>
 
-              <div className="text-center">
-                <div className="w-20 h-20 mx-auto bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center text-3xl font-bold mb-6 shadow-sm">2</div>
+              <div className="text-center group">
+                <div className="w-20 h-20 mx-auto bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-900/50 dark:to-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center text-3xl font-bold mb-6 shadow-sm ring-1 ring-emerald-200/50 dark:ring-emerald-800/50 group-hover:scale-105 transition-transform duration-300">2</div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">{t('step_2_title')}</h3>
-                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">{t('step_2_desc')}</p>
+                <p className="text-slate-600 dark:text-slate-400 leading-relaxed max-w-[280px] mx-auto">{t('step_2_desc')}</p>
               </div>
 
-              <div className="text-center">
-                <div className="w-20 h-20 mx-auto bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center text-3xl font-bold mb-6 shadow-sm">3</div>
+              <div className="text-center group">
+                <div className="w-20 h-20 mx-auto bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-900/50 dark:to-amber-900/20 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center text-3xl font-bold mb-6 shadow-sm ring-1 ring-amber-200/50 dark:ring-amber-800/50 group-hover:scale-105 transition-transform duration-300">3</div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">{t('step_3_title')}</h3>
-                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">{t('step_3_desc')}</p>
+                <p className="text-slate-600 dark:text-slate-400 leading-relaxed max-w-[280px] mx-auto">{t('step_3_desc')}</p>
               </div>
             </div>
           </div>
         </section>
 
-        <section className="py-20 px-4 bg-slate-50 dark:bg-slate-900/50 border-y border-slate-100 dark:border-slate-800">
+        <section className="py-24 px-4 bg-slate-50/80 dark:bg-slate-900/30 border-y border-slate-100 dark:border-slate-800/50">
           <div className="max-w-6xl mx-auto">
-            <h2 className="text-3xl font-bold text-center text-slate-900 dark:text-white mb-16">{t('why_ride_match')}</h2>
-            <div className="grid sm:grid-cols-3 gap-8">
-              <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-transform">
-                <div className="text-4xl mb-4">💰</div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">{t('benefit_1_title')}</h3>
-                <p className="text-slate-600 dark:text-slate-400">{t('benefit_1_desc')}</p>
+            <div className="text-center mb-16">
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white">{t('why_ride_match')}</h2>
+            </div>
+            <div className="grid sm:grid-cols-3 gap-6 sm:gap-8">
+              <div className="bg-white dark:bg-slate-900/80 p-8 rounded-3xl shadow-elevated border border-slate-100 dark:border-slate-800 hover:-translate-y-1.5 transition-all duration-300 group">
+                <div className="w-14 h-14 bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-900/40 dark:to-emerald-900/10 rounded-2xl flex items-center justify-center text-2xl mb-5 group-hover:scale-110 transition-transform duration-300">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600 dark:text-emerald-400"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{t('benefit_1_title')}</h3>
+                <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">{t('benefit_1_desc')}</p>
               </div>
-              <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-transform">
-                <div className="text-4xl mb-4">🌍</div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">{t('benefit_2_title')}</h3>
-                <p className="text-slate-600 dark:text-slate-400">{t('benefit_2_desc')}</p>
+              <div className="bg-white dark:bg-slate-900/80 p-8 rounded-3xl shadow-elevated border border-slate-100 dark:border-slate-800 hover:-translate-y-1.5 transition-all duration-300 group">
+                <div className="w-14 h-14 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/10 rounded-2xl flex items-center justify-center text-2xl mb-5 group-hover:scale-110 transition-transform duration-300">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-sky-600 dark:text-sky-400"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{t('benefit_2_title')}</h3>
+                <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">{t('benefit_2_desc')}</p>
               </div>
-              <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-transform">
-                <div className="text-4xl mb-4">📱</div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">{t('benefit_3_title')}</h3>
-                <p className="text-slate-600 dark:text-slate-400">{t('benefit_3_desc')}</p>
+              <div className="bg-white dark:bg-slate-900/80 p-8 rounded-3xl shadow-elevated border border-slate-100 dark:border-slate-800 hover:-translate-y-1.5 transition-all duration-300 group">
+                <div className="w-14 h-14 bg-gradient-to-br from-violet-100 to-violet-50 dark:from-violet-900/40 dark:to-violet-900/10 rounded-2xl flex items-center justify-center text-2xl mb-5 group-hover:scale-110 transition-transform duration-300">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-violet-600 dark:text-violet-400"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{t('benefit_3_title')}</h3>
+                <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">{t('benefit_3_desc')}</p>
               </div>
             </div>
           </div>
@@ -119,65 +134,95 @@ export default async function PublicLandingPage() {
 
         <section className="py-24 px-4 bg-white dark:bg-slate-950 overflow-hidden">
           <div className="max-w-6xl mx-auto text-center">
-            <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-12">{t('product_preview')}</h2>
+            <div className="mb-12">
+              <p className="text-sm font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest mb-3">{t('product_preview')}</p>
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white">{t('product_preview')}</h2>
+            </div>
 
-            <div className="relative mx-auto max-w-[320px] rounded-[40px] border-[8px] border-slate-900 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 h-[600px] shadow-2xl overflow-hidden">
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-900 dark:bg-slate-800 rounded-b-2xl z-20" />
+            <div className="relative mx-auto max-w-[320px]">
+              {/* Phone glow */}
+              <div className="absolute -inset-8 bg-gradient-to-b from-sky-400/20 to-cyan-400/10 dark:from-sky-500/10 dark:to-cyan-500/5 rounded-[60px] blur-2xl pointer-events-none" />
 
-              <div className="pt-12 px-4 pb-4 h-full overflow-y-auto scrollbar-hide">
-                <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-sm mb-6 border border-slate-100 dark:border-slate-800">
-                  <div className="flex gap-2">
-                    <div className="w-2 h-2 rounded-full bg-sky-500 mt-2 shrink-0" />
-                    <div className="h-4 w-24 bg-slate-200 dark:bg-slate-800 rounded mb-4" />
-                  </div>
-                  <div className="flex gap-2">
-                    <div className="w-2 h-2 rounded-full border border-emerald-500 mt-1 shrink-0" />
-                    <div className="h-4 w-32 bg-slate-200 dark:bg-slate-800 rounded" />
-                  </div>
+              <div className="relative rounded-[44px] border-[6px] border-slate-900 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 h-[620px] shadow-2xl overflow-hidden ring-1 ring-slate-800/20">
+                {/* Notch */}
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 h-6 bg-slate-900 dark:bg-slate-700 rounded-b-2xl z-20" />
+                {/* Status bar dots */}
+                <div className="absolute top-1.5 right-6 flex items-center gap-1 z-20">
+                  <div className="w-1 h-1 rounded-full bg-slate-600" />
+                  <div className="w-1 h-1 rounded-full bg-slate-600" />
+                  <div className="w-1 h-1 rounded-full bg-slate-600" />
                 </div>
 
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-sm mb-4 border border-slate-100 dark:border-slate-800">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800" />
-                      <div className="h-3 w-16 bg-slate-200 dark:bg-slate-800 rounded" />
+                <div className="pt-10 px-3 pb-4 h-full overflow-y-auto scrollbar-hide">
+                  {/* Mini search */}
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 shadow-sm mb-4 border border-slate-100 dark:border-slate-800">
+                    <div className="flex gap-2 items-center mb-2">
+                      <div className="w-2 h-2 rounded-full bg-sky-500 shrink-0" />
+                      <div className="h-3.5 w-20 bg-slate-200 dark:bg-slate-800 rounded-md" />
                     </div>
-                    <div className="h-3 w-3/4 bg-slate-100 dark:bg-slate-800 rounded mb-2" />
-                    <div className="h-3 w-1/2 bg-slate-100 dark:bg-slate-800 rounded mb-4" />
-                    <div className="flex justify-between items-center pt-3 border-t border-slate-50 dark:border-slate-800">
-                      <div className="h-3 w-12 bg-slate-200 dark:bg-slate-800 rounded" />
-                      <div className="h-5 w-16 bg-sky-100 dark:bg-sky-900/30 rounded-full" />
+                    <div className="flex gap-2 items-center">
+                      <div className="w-2 h-2 rounded-full border-[1.5px] border-emerald-500 shrink-0" />
+                      <div className="h-3.5 w-28 bg-slate-200 dark:bg-slate-800 rounded-md" />
                     </div>
                   </div>
-                ))}
+
+                  {/* Mini trip cards */}
+                  {[
+                    { w1: 'w-3/4', w2: 'w-1/2', accent: 'bg-amber-400' },
+                    { w1: 'w-2/3', w2: 'w-3/5', accent: 'bg-sky-200 dark:bg-sky-800' },
+                    { w1: 'w-1/2', w2: 'w-3/4', accent: 'bg-sky-200 dark:bg-sky-800' },
+                  ].map((card, i) => (
+                    <div key={i} className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 shadow-sm mb-3 border border-slate-100 dark:border-slate-800 relative overflow-hidden">
+                      <div className={`absolute left-0 top-3 bottom-3 w-0.5 rounded-full ${card.accent}`} />
+                      <div className="pl-2.5">
+                        <div className="flex items-center gap-2 mb-2.5">
+                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-slate-200 to-slate-100 dark:from-slate-700 dark:to-slate-800" />
+                          <div className="h-2.5 w-14 bg-slate-200 dark:bg-slate-800 rounded" />
+                          <div className="flex-1" />
+                          <div className="h-3 w-8 bg-slate-900/80 dark:bg-sky-400/20 rounded-full" />
+                        </div>
+                        <div className={`h-2.5 ${card.w1} bg-slate-100 dark:bg-slate-800 rounded mb-1.5`} />
+                        <div className={`h-2.5 ${card.w2} bg-slate-100 dark:bg-slate-800 rounded mb-3`} />
+                        <div className="flex justify-between items-center pt-2.5 border-t border-slate-50 dark:border-slate-800">
+                          <div className="h-2.5 w-10 bg-slate-200 dark:bg-slate-800 rounded" />
+                          <div className="h-4 w-14 bg-sky-100 dark:bg-sky-900/30 rounded-full" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Bottom home indicator */}
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-28 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
               </div>
             </div>
           </div>
         </section>
 
-        <section className="py-24 bg-gradient-to-tr from-sky-600 to-cyan-700 dark:from-sky-900 dark:to-slate-800 text-center px-4 relative overflow-hidden">
-          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cartographer.png')] opacity-10 mix-blend-overlay" />
+        <section className="py-28 bg-gradient-to-br from-sky-600 via-sky-700 to-cyan-700 dark:from-sky-900 dark:via-slate-800 dark:to-slate-900 text-center px-4 relative overflow-hidden">
+          <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
+          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-cyan-400/10 rounded-full blur-[120px] translate-x-1/2 -translate-y-1/2 pointer-events-none" />
           <div className="relative z-10 max-w-2xl mx-auto">
-            <h2 className="text-4xl font-extrabold text-white mb-4">{t('final_cta_title')}</h2>
-            <p className="text-sky-100 text-lg mb-10">{t('final_cta_subtitle')}</p>
-            <Link href="/app" className="inline-block rounded-2xl bg-white text-sky-700 px-10 py-4 text-xl font-bold shadow-xl hover:bg-sky-50 transition-colors btn-press">
+            <h2 className="text-4xl sm:text-5xl font-extrabold text-white mb-5 leading-tight">{t('final_cta_title')}</h2>
+            <p className="text-sky-100/90 text-lg sm:text-xl mb-12 leading-relaxed">{t('final_cta_subtitle')}</p>
+            <Link href="/app" className="inline-block rounded-2xl bg-white text-sky-700 px-10 py-4 text-xl font-bold shadow-xl hover:bg-sky-50 hover:shadow-2xl hover:-translate-y-0.5 transition-all btn-press">
               {t('get_started')}
             </Link>
           </div>
         </section>
       </main>
 
-      <footer className="bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-12 px-4">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+      <footer className="bg-slate-50 dark:bg-slate-900/80 border-t border-slate-200 dark:border-slate-800/50 py-14 px-4">
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
           <div className="flex items-center">
-            <BrandLogo lang={lang} size="footer" className="h-11 w-auto" />
+            <BrandLogo lang={lang} size="footer" className="opacity-80" />
           </div>
-          <div className="flex gap-6 text-sm text-slate-500 dark:text-slate-400">
+          <div className="flex gap-8 text-sm text-slate-500 dark:text-slate-400">
             <Link href="/privacy" className="hover:text-slate-900 dark:hover:text-white transition-colors">{t('footer_privacy')}</Link>
             <Link href="/terms" className="hover:text-slate-900 dark:hover:text-white transition-colors">{t('footer_terms')}</Link>
             <Link href="/contact" className="hover:text-slate-900 dark:hover:text-white transition-colors">{t('footer_contact')}</Link>
           </div>
-          <p className="text-xs text-slate-400 dark:text-slate-500">
+          <p className="text-xs text-slate-400 dark:text-slate-600">
             {t('copyright')} {new Date().getFullYear()} {t('ride_match')}. {t('all_rights_reserved')}
           </p>
         </div>
