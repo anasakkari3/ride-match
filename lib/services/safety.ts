@@ -1,4 +1,5 @@
 import { getAdminFirestore } from '@/lib/firebase/firestore-admin';
+import { isCommunityMember } from '@/lib/auth/permissions';
 import type { BookingsRow, TripsRow } from '@/lib/types';
 
 type FirestoreDb = FirebaseFirestore.Firestore;
@@ -78,6 +79,11 @@ export async function validateTripReportParticipants(input: {
   const db = input.passedDb ?? getAdminFirestore();
   const trip = await getTripOrNull(input.tripId, db);
   if (!trip) return { allowed: false, reason: 'trip_not_found' };
+
+  const reporterInCommunity = await isCommunityMember(input.reporterId, trip.community_id, db);
+  if (!reporterInCommunity) {
+    return { allowed: false, reason: 'reporter_not_in_trip_community' };
+  }
 
   const bookings = await getTripBookings(input.tripId, db);
   const participantIds = new Set<string>([trip.driver_id]);

@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { getFirebaseFirestore } from '@/lib/firebase/config';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { collection, doc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { useTranslation } from '@/lib/i18n/LanguageProvider';
 import type { MessageWithSender } from '@/lib/types';
+import { getFirebaseFirestore } from '@/lib/firebase/config';
+import { getTripMembershipDocId } from '@/lib/trips/membership';
 import { sendMessage } from './actions';
 import ReportUserModal from '../ReportUserModal';
+import { formatLocalizedTime } from '@/lib/i18n/locale';
+import { getCoordinationActionText } from '@/lib/i18n/runtime-text';
 
 type Props = {
   tripId: string;
@@ -16,6 +20,33 @@ type Props = {
   canSendMessages: boolean;
   isRestricted: boolean;
 };
+
+const COPY = {
+  en: {
+    reportTitle: (name: string) => `Report ${name}`,
+    restricted: 'A block setting limits this shared trip thread. Structured trip updates and cancellations stay visible, but free-text messages are disabled.',
+    frozen: 'Trip chat is read-only because this trip is no longer active.',
+    chatClosed: 'Chat is closed for this trip',
+    messagingUnavailable: 'Free-text messaging is unavailable for this trip',
+    you: 'You',
+  },
+  ar: {
+    reportTitle: (name: string) => `الإبلاغ عن ${name}`,
+    restricted: 'إعداد الحظر يقيّد هذه المحادثة المشتركة. ما زالت تحديثات الرحلة والإلغاءات المهيكلة ظاهرة، لكن الرسائل الحرة متوقفة.',
+    frozen: 'دردشة الرحلة للقراءة فقط لأن هذه الرحلة لم تعد نشطة.',
+    chatClosed: 'تم إغلاق الدردشة لهذه الرحلة',
+    messagingUnavailable: 'الرسائل الحرة غير متاحة لهذه الرحلة',
+    you: 'أنت',
+  },
+  he: {
+    reportTitle: (name: string) => `דיווח על ${name}`,
+    restricted: 'הגדרת חסימה מגבילה את השרשור המשותף הזה. עדכוני נסיעה וביטולים מובנים עדיין נשארים גלויים, אבל הודעות חופשיות מושבתות.',
+    frozen: 'צ׳אט הנסיעה הוא לקריאה בלבד כי הנסיעה הזו כבר לא פעילה.',
+    chatClosed: 'הצ׳אט סגור לנסיעה הזאת',
+    messagingUnavailable: 'הודעות חופשיות אינן זמינות לנסיעה הזאת',
+    you: 'אתם',
+  },
+} as const;
 
 function hydrateMessage(raw: Record<string, unknown>): MessageWithSender {
   return {
@@ -35,48 +66,74 @@ export default function ChatRoom({
   canSendMessages,
   isRestricted,
 }: Props) {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
+  const copy = COPY[lang];
+  const router = useRouter();
   const [messages, setMessages] = useState<MessageWithSender[]>(initialMessages);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [reportTarget, setReportTarget] = useState<{ id: string; name: string } | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const messageCacheRef = useRef(new Map(initialMessages.map((message) => [message.id, message])));
 
   useEffect(() => {
     const db = getFirebaseFirestore();
-    const q = query(
+    const messagesQuery = query(
       collection(db, 'messages'),
       where('trip_id', '==', tripId),
       orderBy('created_at', 'asc')
     );
-    const unsubscribe = onSnapshot(
-      q,
+    const membershipRef = doc(db, 'trip_memberships', getTripMembershipDocId(tripId, currentUserId));
+
+    const unsubscribeMessages = onSnapshot(
+      messagesQuery,
       (snapshot) => {
-        const nextMessages: MessageWithSender[] = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          const existing = messageCacheRef.current.get(doc.id);
-          return {
-            ...(data as MessageWithSender),
-            id: doc.id,
-            sender: existing?.sender ?? {
-              display_name: (data.sender_display_name as string | null) ?? null,
-              avatar_url: (data.sender_avatar_url as string | null) ?? null,
-            },
-          };
-        });
-        messageCacheRef.current = new Map(nextMessages.map((message) => [message.id, message]));
-        setMessages(nextMessages);
+        setMessages(
+          snapshot.docs.map((messageDoc) => hydrateMessage({
+            id: messageDoc.id,
+            ...messageDoc.data(),
+          } as Record<string, unknown>))
+        );
       },
-      (err) => {
-        console.warn('Chat subscription error (likely security rules):', err.message);
+      (snapshotError) => {
+        if (snapshotError.code === 'permission-denied') {
+          router.replace('/messages');
+          return;
+        }
+        console.warn('Chat subscription failed:', snapshotError.message);
       }
     );
-    return () => unsubscribe();
-  }, [tripId]);
+
+    const unsubscribeMembership = onSnapshot(
+      membershipRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          router.replace('/messages');
+          return;
+        }
+
+        const membershipStatus = snapshot.data().status as string | undefined;
+        if (membershipStatus === 'cancelled') {
+          router.replace('/messages');
+        }
+      },
+      (snapshotError) => {
+        if (snapshotError.code === 'permission-denied') {
+          router.replace('/messages');
+          return;
+        }
+
+        console.warn('Trip membership subscription failed:', snapshotError.message);
+      }
+    );
+
+    return () => {
+      unsubscribeMessages();
+      unsubscribeMembership();
+    };
+  }, [currentUserId, router, tripId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const messageList = document.getElementById('trip-chat-bottom');
+    messageList?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -98,8 +155,8 @@ export default function ChatRoom({
         {messages.map((message) => {
           const hydratedMessage = hydrateMessage(message as unknown as Record<string, unknown>);
           const isMe = hydratedMessage.sender_id === currentUserId;
-          const timeString = new Date(hydratedMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const senderName = hydratedMessage.sender?.display_name ?? 'Someone';
+          const timeString = formatLocalizedTime(lang, hydratedMessage.created_at);
+          const senderName = hydratedMessage.sender?.display_name ?? t('someone');
 
           if (hydratedMessage.coordination_action) {
             const isCancellation =
@@ -114,7 +171,7 @@ export default function ChatRoom({
                     : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                 }`}>
                   <span className="text-xs font-semibold">
-                    {isMe ? 'You' : senderName} {hydratedMessage.content}
+                    {getCoordinationActionText(hydratedMessage.coordination_action, lang, senderName, isMe)}
                   </span>
                   <span className="text-[10px] opacity-70 ml-1">{timeString}</span>
                 </div>
@@ -126,13 +183,13 @@ export default function ChatRoom({
             <li key={hydratedMessage.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
               <div className="text-[10px] text-slate-400 font-medium mb-1 px-1 flex items-center gap-1">
                 {isMe ? (
-                  <span>You</span>
+                  <span>{copy.you}</span>
                 ) : (
                   <button
                     type="button"
                     onClick={() => setReportTarget({ id: hydratedMessage.sender_id, name: senderName })}
                     className="hover:underline hover:text-slate-600 dark:hover:text-slate-300 transition-colors flex items-center gap-1"
-                    title={`Report ${senderName}`}
+                    title={copy.reportTitle(senderName)}
                   >
                     {senderName}
                   </button>
@@ -152,18 +209,18 @@ export default function ChatRoom({
             </li>
           );
         })}
-        <div ref={bottomRef} />
+        <div id="trip-chat-bottom" />
       </ul>
 
       {isRestricted && !isFrozen && (
         <div className="px-4 pb-2 text-xs text-amber-700 dark:text-amber-300">
-          A block setting limits this shared trip thread. Structured trip updates and cancellations stay visible, but free-text messages are disabled.
+          {copy.restricted}
         </div>
       )}
 
       {isFrozen && (
         <div className="px-4 pb-2 text-xs text-slate-500 dark:text-slate-400">
-          Trip chat is read-only because this trip is no longer active.
+          {copy.frozen}
         </div>
       )}
 
@@ -172,11 +229,12 @@ export default function ChatRoom({
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          data-testid="chat-message-input"
           placeholder={
             isFrozen
-              ? 'Chat is closed for this trip'
+              ? copy.chatClosed
               : !canSendMessages
-                ? 'Free-text messaging is unavailable for this trip'
+                ? copy.messagingUnavailable
                 : t('type_message')
           }
           disabled={isFrozen || loading || !canSendMessages}
@@ -185,6 +243,7 @@ export default function ChatRoom({
         <button
           type="submit"
           disabled={loading || !input.trim() || isFrozen || !canSendMessages}
+          data-testid="chat-send-button"
           className="rounded-xl bg-sky-600 dark:bg-sky-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-sky-700 dark:hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {t('send')}

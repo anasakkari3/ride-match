@@ -6,6 +6,22 @@ import { UnauthorizedError, NotFoundError, AppError } from '@/lib/utils/errors';
 import { createNotification } from './notification';
 import { canJoinTrip, canCancelBooking } from '@/lib/auth/permissions';
 import { getEffectiveTripStatus, syncTripStatusWithSeats } from '@/lib/trips/lifecycle';
+import { logWarn } from '@/lib/observability/logger';
+import { queuePassengerTripMembership } from './trip-membership';
+import { describeProfileActionFields, getBasicProfileActionReadiness } from './user';
+
+function buildPassengerSnapshot(
+  userId: string,
+  data?: FirebaseFirestore.DocumentData | null
+): UserProfile {
+  return {
+    id: userId,
+    display_name: typeof data?.display_name === 'string' ? data.display_name : null,
+    avatar_url: typeof data?.avatar_url === 'string' ? data.avatar_url : null,
+    rating_avg: typeof data?.rating_avg === 'number' ? data.rating_avg : 0,
+    rating_count: typeof data?.rating_count === 'number' ? data.rating_count : 0,
+  };
+}
 
 export async function bookSeat(tripId: string, seats: number = 1) {
   const user = await getCurrentUser();
@@ -29,6 +45,14 @@ export async function bookSeat(tripId: string, seats: number = 1) {
       ...tripData,
       status: getEffectiveTripStatus(tripData),
     };
+    const communityRef = db.collection('communities').doc(tripData.community_id);
+    const communityDoc = await tx.get(communityRef);
+    const communityType =
+      communityDoc.data()?.type === 'public'
+        ? 'public'
+        : tripData.community_type === 'public'
+          ? 'public'
+          : 'verified';
 
     const existingBookings = await tx.get(
       db.collection('bookings')
@@ -37,8 +61,26 @@ export async function bookSeat(tripId: string, seats: number = 1) {
         .where('status', '==', 'confirmed')
     );
 
-    const joinGate = canJoinTrip(user.id, effectiveTrip, !existingBookings.empty);
+    const communityMembershipRef = db.collection('community_members').doc(`${tripData.community_id}_${user.id}`);
+    const userProfileRef = db.collection('users').doc(user.id);
+    const [communityMembershipDoc, userProfileDoc] = await Promise.all([
+      tx.get(communityMembershipRef),
+      tx.get(userProfileRef),
+    ]);
+    const userProfileData = userProfileDoc.data() ?? null;
+    const passengerSnapshot = buildPassengerSnapshot(user.id, userProfileData);
+    const joinGate = canJoinTrip(
+      user.id,
+      effectiveTrip,
+      !existingBookings.empty,
+      communityMembershipDoc.exists
+    );
     if (!joinGate.allowed) {
+      logWarn('booking.join_denied', {
+        tripId,
+        userId: user.id,
+        reason: joinGate.reason ?? 'forbidden',
+      });
       throw new AppError(`Booking rejected: ${joinGate.reason}`, 'FORBIDDEN');
     }
 
@@ -50,6 +92,31 @@ export async function bookSeat(tripId: string, seats: number = 1) {
 
     if (!blockedByUser.empty || !userBlockedBy.empty) {
       throw new AppError('You cannot book a trip with this user', 'FORBIDDEN');
+    }
+
+    if (communityType === 'public') {
+      const publicBookingReadiness = getBasicProfileActionReadiness(userProfileData);
+      if (!publicBookingReadiness.isReady) {
+        logWarn('booking.profile_gate_denied', {
+          tripId,
+          userId: user.id,
+          communityType,
+          missingFields: publicBookingReadiness.missingFields,
+        });
+        throw new AppError(
+          `Complete your basic profile before booking in the public community. Missing or incomplete: ${describeProfileActionFields(publicBookingReadiness.missingFields)}. Update it on your profile page.`,
+          'PROFILE_INCOMPLETE',
+          403
+        );
+      }
+
+      if (seats !== 1) {
+        throw new AppError(
+          'Public community bookings are limited to 1 seat',
+          'PUBLIC_COMMUNITY_LIMIT',
+          403
+        );
+      }
     }
 
     if (new Date(effectiveTrip.departure_time).getTime() < Date.now()) {
@@ -70,6 +137,8 @@ export async function bookSeat(tripId: string, seats: number = 1) {
     tx.set(bookingRef, {
       trip_id: tripId,
       passenger_id: user.id,
+      passenger_display_name: passengerSnapshot.display_name,
+      passenger_avatar_url: passengerSnapshot.avatar_url,
       seats,
       status: 'confirmed',
       created_at: createdAt,
@@ -78,6 +147,15 @@ export async function bookSeat(tripId: string, seats: number = 1) {
     tx.update(tripRef, {
       seats_available: nextSeatsAvailable,
       status: nextStatus,
+    });
+
+    queuePassengerTripMembership({
+      db,
+      writer: tx,
+      tripId,
+      passengerId: user.id,
+      status: 'confirmed',
+      updatedAt: createdAt,
     });
 
     return {
@@ -89,9 +167,12 @@ export async function bookSeat(tripId: string, seats: number = 1) {
         id: bookingRef.id,
         trip_id: tripId,
         passenger_id: user.id,
+        passenger_display_name: passengerSnapshot.display_name,
+        passenger_avatar_url: passengerSnapshot.avatar_url,
         seats,
         status: 'confirmed' as const,
         created_at: createdAt,
+        passenger: passengerSnapshot,
       } as BookingWithPassenger,
     };
   });
@@ -101,23 +182,6 @@ export async function bookSeat(tripId: string, seats: number = 1) {
     payload: { trip_id: tripId, booking_id: result.booking_id },
   });
 
-  let passenger: UserProfile | null = null;
-  try {
-    const passengerDoc = await db.collection('users').doc(user.id).get();
-    if (passengerDoc.exists) {
-      const passengerData = passengerDoc.data()!;
-      passenger = {
-        id: passengerDoc.id,
-        display_name: passengerData.display_name ?? null,
-        avatar_url: passengerData.avatar_url ?? null,
-        rating_avg: passengerData.rating_avg ?? 0,
-        rating_count: passengerData.rating_count ?? 0,
-      };
-    }
-  } catch {
-    // non-critical
-  }
-
   try {
     const tripDoc = await db.collection('trips').doc(tripId).get();
     const driverId = tripDoc.data()?.driver_id;
@@ -126,7 +190,7 @@ export async function bookSeat(tripId: string, seats: number = 1) {
         userId: driverId,
         type: 'booking',
         title: 'New Booking',
-        body: `${user.displayName || 'Someone'} booked ${seats} seat(s) on your trip.`,
+        body: `${result.booking.passenger?.display_name ?? 'Someone'} booked ${seats} seat(s) on your trip.`,
         linkUrl: `/trips/${tripId}`
       });
     }
@@ -136,10 +200,7 @@ export async function bookSeat(tripId: string, seats: number = 1) {
 
   return {
     ...result,
-    booking: {
-      ...result.booking,
-      passenger,
-    },
+    booking: result.booking,
   };
 }
 
@@ -172,10 +233,13 @@ export async function getBookingsForTrip(tripId: string): Promise<BookingWithPas
 
   return snap.docs.map((d) => {
     const data = d.data();
+    const snapshotPassenger = buildPassengerSnapshot(data.passenger_id as string, data);
+    const passenger = userMap.get(data.passenger_id) ?? snapshotPassenger;
+
     return {
       id: d.id,
       ...data,
-      passenger: userMap.get(data.passenger_id) ?? null,
+      passenger,
     } as BookingWithPassenger;
   });
 }
@@ -204,6 +268,12 @@ export async function cancelBooking(bookingId: string) {
 
     const cancelGate = canCancelBooking(user.id, booking, effectiveTrip);
     if (!cancelGate.allowed) {
+      logWarn('booking.cancel_denied', {
+        bookingId,
+        tripId: booking.trip_id,
+        userId: user.id,
+        reason: cancelGate.reason ?? 'forbidden',
+      });
       throw new UnauthorizedError(`Unauthorized to cancel this booking: ${cancelGate.reason ?? 'forbidden'}`);
     }
 
@@ -218,6 +288,9 @@ export async function cancelBooking(bookingId: string) {
     });
 
     // Inject cancellation signal
+    const userRef = db.collection('users').doc(user.id);
+    const userDoc = await tx.get(userRef);
+    const userProfile = userDoc.data();
     const messageRef = db.collection('messages').doc();
     tx.set(messageRef, {
       trip_id: booking.trip_id,
@@ -225,8 +298,8 @@ export async function cancelBooking(bookingId: string) {
       content: 'cancelled a seat',
       coordination_action: 'PASSENGER_CANCELED_SEAT',
       created_at: cancelledAt,
-      sender_display_name: user.displayName ?? null,
-      sender_avatar_url: user.photoURL ?? null,
+      sender_display_name: userProfile?.display_name ?? null,
+      sender_avatar_url: userProfile?.avatar_url ?? null,
     });
 
     // Ensure seats don't exceed the total capacity
@@ -239,6 +312,15 @@ export async function cancelBooking(bookingId: string) {
       seats_available: updatedSeats,
       status: nextStatus,
     });
+
+    queuePassengerTripMembership({
+      db,
+      writer: tx,
+      tripId: booking.trip_id,
+      passengerId: booking.passenger_id,
+      status: 'cancelled',
+      updatedAt: cancelledAt,
+    });
     
     return { 
       driverId: effectiveTrip.driver_id, 
@@ -249,6 +331,7 @@ export async function cancelBooking(bookingId: string) {
       cancelledAt,
       cancelledBy: user.id,
       bookingId: bookingRef.id,
+      cancellerDisplayName: userProfile?.display_name ?? 'Someone',
     };
   });
 
@@ -259,7 +342,7 @@ export async function cancelBooking(bookingId: string) {
         userId: notifyId,
         type: 'cancellation',
         title: 'Booking Cancelled',
-        body: `${user.displayName || 'Someone'} cancelled ${user.id === result.driverId ? 'your booking' : `their booking for ${result.seats} seat(s)`}.`,
+        body: `${result.cancellerDisplayName} cancelled ${user.id === result.driverId ? 'your booking' : `their booking for ${result.seats} seat(s)`}.`,
         linkUrl: `/trips/${result.tripId}`
       });
     }

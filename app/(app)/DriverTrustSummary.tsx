@@ -1,3 +1,7 @@
+'use client';
+
+import { useTranslation } from '@/lib/i18n/LanguageProvider';
+
 type Props = {
   ratingAvg?: number | null;
   ratingCount?: number | null;
@@ -9,11 +13,6 @@ function formatAverage(avg: number): string {
   return avg.toFixed(1).replace(/\.0$/, '');
 }
 
-function formatReceivedRatingCount(ratingCount: number): string {
-  if (ratingCount <= 0) return 'No ratings received';
-  return `${ratingCount} rating${ratingCount === 1 ? '' : 's'} received`;
-}
-
 function CompactTrustSummary({
   ratingAvg,
   ratingCount,
@@ -23,13 +22,14 @@ function CompactTrustSummary({
   ratingCount: number;
   completedDrives: number;
 }) {
+  const { t } = useTranslation();
   const hasRatings = ratingCount > 0;
   const hasCompletedDrives = completedDrives > 0;
 
   if (!hasRatings && !hasCompletedDrives) {
     return (
       <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-        New driver
+        {t('new_driver')}
       </span>
     );
   }
@@ -39,7 +39,7 @@ function CompactTrustSummary({
       {hasRatings ? (
         <span className="font-bold text-amber-500">
           <span className="font-normal text-slate-500 dark:text-slate-400 mr-1">
-            Rating
+            {t('driver_rating')}
           </span>
           {formatAverage(ratingAvg)}
           <span className="font-normal text-slate-400 dark:text-slate-500 ml-0.5">
@@ -48,14 +48,14 @@ function CompactTrustSummary({
         </span>
       ) : (
         <span className="text-slate-400 dark:text-slate-500 font-medium">
-          No ratings yet
+          {t('no_ratings_yet')}
         </span>
       )}
       {hasCompletedDrives && (
         <>
           <span className="text-slate-300 dark:text-slate-600" aria-hidden="true">|</span>
           <span className="text-slate-500 dark:text-slate-400 font-medium">
-            {completedDrives} completed drive{completedDrives === 1 ? '' : 's'}
+            {completedDrives} {completedDrives === 1 ? t('completed_drive') : t('completed_drives')}
           </span>
         </>
       )}
@@ -72,28 +72,34 @@ function FullTrustSummary({
   ratingCount: number;
   completedDrives: number;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex items-center gap-2">
       <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-center min-w-[84px]">
         <p className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500 font-bold">
-          Received rating
+          {t('driver_rating')}
         </p>
         <p className="text-sm font-black text-slate-900 dark:text-slate-100 mt-1">
-          {ratingCount > 0 ? formatAverage(ratingAvg) : 'New'}
+          {ratingCount > 0 ? formatAverage(ratingAvg) : t('new')}
         </p>
         <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-          {formatReceivedRatingCount(ratingCount)}
+          {ratingCount <= 0
+            ? t('no_ratings_received')
+            : ratingCount === 1
+              ? `1 ${t('rating_received')}`
+              : `${ratingCount} ${t('ratings_received')}`}
         </p>
       </div>
       <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-center min-w-[108px]">
         <p className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500 font-bold">
-          Completed drives
+          {t('completed_drives_label')}
         </p>
         <p className="text-sm font-black text-slate-900 dark:text-slate-100 mt-1">
           {completedDrives}
         </p>
         <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-          as driver
+          {t('as_driver')}
         </p>
       </div>
     </div>

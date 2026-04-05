@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import BrandLogo from '@/components/BrandLogo';
 import { useTranslation } from '@/lib/i18n/LanguageProvider';
 
 export default function AppNav() {
   const pathname = usePathname();
-  const { t } = useTranslation();
+  const { lang, t } = useTranslation();
 
   const nav = [
     {
@@ -41,7 +42,7 @@ export default function AppNav() {
     },
     {
       href: '/messages',
-      label: 'Messages',
+      label: t('messages_nav'),
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -50,7 +51,7 @@ export default function AppNav() {
     },
     {
       href: '/notifications',
-      label: 'Alerts',
+      label: t('notifications_nav'),
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -63,15 +64,14 @@ export default function AppNav() {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl shadow-sm animate-slide-down">
       <div className="max-w-4xl mx-auto px-4 flex items-center justify-between h-14">
-        {/* Logo */}
-        <Link href="/app" className="flex items-center gap-2 group">
-          <span className="text-xl group-hover:animate-bounce-subtle">🚗</span>
-          <span className="font-bold text-slate-900 dark:text-white text-lg tracking-tight hidden sm:inline">
-            {t('ride_match')}
-          </span>
+        <Link href="/app" className="flex items-center group">
+          <BrandLogo
+            lang={lang}
+            size="nav"
+            className="h-9 w-auto transition-transform duration-200 group-hover:scale-[1.02]"
+          />
         </Link>
 
-        {/* Nav Links */}
         <div className="flex items-center gap-1">
           {nav.map(({ href, label, icon }) => {
             const active = pathname === href || (href === '/profile' && pathname.startsWith('/profile'));

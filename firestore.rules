@@ -1,0 +1,104 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function communityMemberDocPath(communityId) {
+      return /databases/$(database)/documents/community_members/$(communityId + '_' + request.auth.uid);
+    }
+
+    function tripMembershipDocPath(tripId) {
+      return /databases/$(database)/documents/trip_memberships/$(tripId + '_' + request.auth.uid);
+    }
+
+    function tripDocPath(tripId) {
+      return /databases/$(database)/documents/trips/$(tripId);
+    }
+
+    function isCommunityMember(communityId) {
+      return isSignedIn() && exists(communityMemberDocPath(communityId));
+    }
+
+    function hasTripMembership(tripId) {
+      return isSignedIn() && exists(tripMembershipDocPath(tripId));
+    }
+
+    function tripExists(tripId) {
+      return exists(tripDocPath(tripId));
+    }
+
+    function tripCommunityId(tripId) {
+      return get(tripDocPath(tripId)).data.community_id;
+    }
+
+    function tripMembershipStatus(tripId) {
+      return get(tripMembershipDocPath(tripId)).data.status;
+    }
+
+    function hasReadableTripMembership(tripId) {
+      return hasTripMembership(tripId)
+        && (tripMembershipStatus(tripId) == 'driver' || tripMembershipStatus(tripId) == 'confirmed');
+    }
+
+    function canReadTripMessages(tripId) {
+      return tripExists(tripId)
+        && isCommunityMember(tripCommunityId(tripId))
+        && hasReadableTripMembership(tripId);
+    }
+
+    function canReadTripRoster(tripId) {
+      return canReadTripMessages(tripId);
+    }
+
+    function canReadTrip(communityId) {
+      return isCommunityMember(communityId);
+    }
+
+    match /users/{userId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
+    match /communities/{communityId} {
+      allow read: if isCommunityMember(communityId);
+      allow write: if false;
+    }
+
+    match /community_members/{membershipId} {
+      allow read: if isSignedIn() && resource.data.user_id == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /trips/{tripId} {
+      allow read: if isSignedIn() && canReadTrip(resource.data.community_id);
+      allow write: if false;
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if isSignedIn() && canReadTripRoster(resource.data.trip_id);
+      allow write: if false;
+    }
+
+    match /messages/{messageId} {
+      allow read: if isSignedIn() && canReadTripMessages(resource.data.trip_id);
+      allow write: if false;
+    }
+
+    match /trip_memberships/{membershipId} {
+      allow read: if isSignedIn() && resource.data.user_id == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.user_id == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

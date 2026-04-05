@@ -3,6 +3,9 @@ import type { BookingsRow, CommunityMembersRow, TripsRow } from '@/lib/types';
 import { getEffectiveTripStatus } from '@/lib/trips/lifecycle';
 import { hasTripDeparted, isPreDepartureTrip } from '@/lib/trips/coordination';
 
+export { canCompleteTrip, canStartTrip } from '@/lib/trips/lifecycle-permissions';
+
+type FirestoreDb = FirebaseFirestore.Firestore;
 type TripPermissionTarget = Pick<
   TripsRow,
   'community_id' | 'driver_id' | 'seats_available' | 'status' | 'departure_time'
@@ -45,10 +48,12 @@ export function canViewTrip(
 export function canJoinTrip(
   userId: string | undefined | null,
   trip: TripPermissionTarget,
-  isAlreadyBooked: boolean
+  isAlreadyBooked: boolean,
+  hasCommunityMembership: boolean
 ): PermissionDecision {
   const status = getEffectiveTripStatus(trip);
   if (!userId) return { allowed: false, reason: 'unauthorized' };
+  if (!hasCommunityMembership) return { allowed: false, reason: 'community_membership_required' };
   if (trip.driver_id === userId) return { allowed: false, reason: 'self_booking' };
   if (isAlreadyBooked) return { allowed: false, reason: 'duplicate_booking' };
   if (trip.seats_available <= 0) return { allowed: false, reason: 'full' };
@@ -84,26 +89,6 @@ export function canCancelTrip(
   return { allowed: true };
 }
 
-export function canStartTrip(
-  userId: string | undefined | null,
-  trip: TripPermissionTarget
-): PermissionDecision {
-  const status = getEffectiveTripStatus(trip);
-  if (!isDriverForTrip(userId, trip)) return { allowed: false, reason: 'unauthorized' };
-  if (status !== 'scheduled' && status !== 'full') return { allowed: false, reason: 'invalid_status' };
-  return { allowed: true };
-}
-
-export function canCompleteTrip(
-  userId: string | undefined | null,
-  trip: TripPermissionTarget
-): PermissionDecision {
-  const status = getEffectiveTripStatus(trip);
-  if (!isDriverForTrip(userId, trip)) return { allowed: false, reason: 'unauthorized' };
-  if (status !== 'in_progress') return { allowed: false, reason: 'invalid_status' };
-  return { allowed: true };
-}
-
 // Determines if a user can see the passenger roster of a trip
 export function canViewTripRoster(
   userId: string | undefined | null,
@@ -126,9 +111,9 @@ export function canViewTripCommunication(
   if (!userId) return false;
   if (trip.driver_id === userId) return true;
 
+  // Revoke visibility for cancelled passengers
   return participantBookings.some((booking) => {
-    if (booking.passenger_id !== userId) return false;
-    return booking.status === 'confirmed' || booking.status === 'cancelled';
+    return booking.passenger_id === userId && booking.status === 'confirmed';
   });
 }
 
@@ -178,4 +163,36 @@ export async function isAdmin(userId: string | undefined | null): Promise<boolea
     .limit(1)
     .get();
   return !adminSnap.empty;
+}
+
+export async function getCommunityMembershipRole(
+  userId: string | undefined | null,
+  communityId: string,
+  passedDb?: FirestoreDb
+): Promise<CommunityMembersRow['role'] | null> {
+  if (!userId) return null;
+
+  const db = passedDb ?? getAdminFirestore();
+  const membershipDoc = await db.collection('community_members').doc(`${communityId}_${userId}`).get();
+
+  if (!membershipDoc.exists) return null;
+
+  const membership = membershipDoc.data() as CommunityMembersRow;
+  return membership.role;
+}
+
+export async function isCommunityMember(
+  userId: string | undefined | null,
+  communityId: string,
+  passedDb?: FirestoreDb
+): Promise<boolean> {
+  return (await getCommunityMembershipRole(userId, communityId, passedDb)) !== null;
+}
+
+export async function isCommunityAdmin(
+  userId: string | undefined | null,
+  communityId: string,
+  passedDb?: FirestoreDb
+): Promise<boolean> {
+  return (await getCommunityMembershipRole(userId, communityId, passedDb)) === 'admin';
 }

@@ -9,6 +9,7 @@ import { getEffectiveTripStatus } from '@/lib/trips/lifecycle';
 import type { BookingsRow, TripsRow } from '@/lib/types';
 import { getTripCommunicationAccessForUser } from '@/lib/services/message';
 import { canSendCoordinationAction, type CoordinationActionKey } from '@/lib/trips/coordination';
+import { logWarn } from '@/lib/observability/logger';
 import {
   validateTripReportParticipants,
 } from '@/lib/services/safety';
@@ -80,20 +81,46 @@ export async function sendCoordinationAction(
     effectiveStatus === 'scheduled' ||
     effectiveStatus === 'full' ||
     effectiveStatus === 'in_progress';
-  if (!isActiveTrip) return { ok: false, error: 'invalid_status' };
+  if (!isActiveTrip) {
+    logWarn('coordination.denied', {
+      tripId,
+      userId: user.id,
+      action,
+      reason: 'invalid_status',
+    });
+    return { ok: false, error: 'invalid_status' };
+  }
 
   const isDriver = trip.driver_id === user.id;
   const communicationAccess = await getTripCommunicationAccessForUser(user.id, tripId, db);
 
   if (!communicationAccess.canView) {
+    logWarn('coordination.denied', {
+      tripId,
+      userId: user.id,
+      action,
+      reason: communicationAccess.restrictionReason ?? 'unauthorized',
+    });
     return { ok: false, error: communicationAccess.restrictionReason ?? 'unauthorized' };
   }
 
   if (action === 'DRIVER_CONFIRMED' && !isDriver) {
+    logWarn('coordination.denied', {
+      tripId,
+      userId: user.id,
+      action,
+      reason: 'unauthorized',
+    });
     return { ok: false, error: 'unauthorized' };
   }
 
   if ((action === 'PASSENGER_HERE' || action === 'PASSENGER_LATE') && isDriver) {
+    logWarn('coordination.denied', {
+      tripId,
+      userId: user.id,
+      action,
+      reason: 'unauthorized',
+    });
     return { ok: false, error: 'unauthorized' };
   }
 
@@ -112,23 +139,34 @@ export async function sendCoordinationAction(
   }
 
   if (!canSendCoordinationAction({ trip, isDriver, hasConfirmedBooking, action })) {
+    logWarn('coordination.denied', {
+      tripId,
+      userId: user.id,
+      action,
+      reason: 'invalid_status',
+    });
     return { ok: false, error: 'invalid_status' };
   }
 
   const createdAt = new Date().toISOString();
+  const userProfileDoc = await db.collection('users').doc(user.id).get();
+  const userProfile = userProfileDoc.data();
+  const senderDisplayName = userProfile?.display_name ?? 'Someone';
+  const senderAvatarUrl = userProfile?.avatar_url ?? null;
+
   await db.collection('messages').add({
     trip_id: tripId,
     sender_id: user.id,
     content: ACTION_COPY[action],
     coordination_action: action,
     created_at: createdAt,
-    sender_display_name: user.displayName ?? null,
-    sender_avatar_url: user.photoURL ?? null,
+    sender_display_name: senderDisplayName,
+    sender_avatar_url: senderAvatarUrl,
   });
 
   try {
     const notifConfig = ACTION_NOTIFICATION[action];
-    const displayName = user.displayName ?? 'Someone';
+    const displayName = senderDisplayName;
     const linkUrl = `/trips/${tripId}/chat`;
     const notifyIds = new Set<string>();
 
@@ -176,6 +214,16 @@ export async function submitReportAction(params: {
     if (!user) return { ok: false, error: 'unauthorized' };
 
     const db = getAdminFirestore();
+    const [tripDoc, reporterDoc, reportedDoc] = await Promise.all([
+      db.collection('trips').doc(params.tripId).get(),
+      db.collection('users').doc(user.id).get(),
+      db.collection('users').doc(params.reportedUserId).get(),
+    ]);
+
+    if (!tripDoc.exists) {
+      return { ok: false, error: 'trip_not_found' };
+    }
+
     const participantCheck = await validateTripReportParticipants({
       reporterId: user.id,
       reportedUserId: params.reportedUserId,
@@ -187,14 +235,37 @@ export async function submitReportAction(params: {
       return { ok: false, error: participantCheck.reason };
     }
 
+    const existingPendingReport = await db
+      .collection('reports')
+      .where('trip_id', '==', params.tripId)
+      .where('reporter_id', '==', user.id)
+      .where('reported_id', '==', params.reportedUserId)
+      .where('status', '==', 'pending')
+      .limit(1)
+      .get();
+
+    if (!existingPendingReport.empty) {
+      return { ok: false, error: 'report_already_pending' };
+    }
+
+    const trip = tripDoc.data() as TripsRow;
+    const reporterProfile = reporterDoc.data();
+    const reportedProfile = reportedDoc.data();
     await db.collection('reports').add({
       trip_id: params.tripId,
+      community_id: trip.community_id,
+      community_name: typeof trip.community_name === 'string' ? trip.community_name : null,
       reporter_id: user.id,
+      reporter_display_name: reporterProfile?.display_name ?? null,
       reported_id: params.reportedUserId,
+      reported_display_name: reportedProfile?.display_name ?? null,
       reason: params.reason,
       context: params.context?.trim() || null,
       status: 'pending',
+      review_note: null,
       created_at: new Date().toISOString(),
+      reviewed_at: null,
+      reviewed_by: null,
     });
 
     return { ok: true };

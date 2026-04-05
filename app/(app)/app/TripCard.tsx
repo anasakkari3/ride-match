@@ -1,9 +1,21 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { DriverTrustSummary } from '../DriverTrustSummary';
+import CommunityBadge from '@/components/CommunityBadge';
+import type { CommunityType } from '@/lib/types';
+import type { Lang } from '@/lib/i18n/dictionaries';
+import {
+  formatLocalizedTime,
+  formatPriceLabel,
+  formatSeatAvailability,
+  formatSeatCount,
+  getRelativeDayLabel,
+} from '@/lib/i18n/locale';
 
 type TripCardTrip = {
   id: string;
+  community_name?: string | null;
+  community_type?: CommunityType | null;
   origin_name: string;
   destination_name: string;
   departure_time: string;
@@ -22,44 +34,44 @@ type TripCardTrip = {
   driver_completed_drives?: number;
 };
 
-function formatDepartureDate(isoString: string, lang: string): { time: string; date: string } {
-  const date = new Date(isoString);
-  const now = new Date();
-  const time = date.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' });
+const FALLBACK = {
+  today: 'Today',
+  tomorrow: 'Tomorrow',
+  free: 'Free',
+  seat: 'seat',
+  seats: 'seats',
+  seat_left: 'seat left',
+  seats_left: 'seats left',
+  community_member: 'Community member',
+  publicCommunityNote: 'Public community',
+  driver: 'Driver',
+} as const;
 
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const dayDiff = Math.round((startOfDate.getTime() - startOfToday.getTime()) / 86_400_000);
+const PUBLIC_COPY: Record<Lang, string> = {
+  en: 'Public community',
+  ar: 'مجتمع عام',
+  he: 'קהילה ציבורית',
+};
 
-  let dateLabel: string;
-  if (dayDiff === 0) {
-    dateLabel = 'Today';
-  } else if (dayDiff === 1) {
-    dateLabel = 'Tomorrow';
-  } else {
-    dateLabel = date.toLocaleDateString(lang, { weekday: 'short', month: 'short', day: 'numeric' });
-  }
-
-  return { time, date: dateLabel };
-}
-
-function formatPrice(priceCents: number | null | undefined): string | null {
-  if (priceCents == null) return null;
-  if (priceCents === 0) return 'Free';
-  return `$${(priceCents / 100).toFixed(2)}`;
+function normalizeLang(lang?: string): Lang {
+  return lang === 'ar' || lang === 'he' ? lang : 'en';
 }
 
 export function TripCard(props: { trip: TripCardTrip; t?: (k: string) => string; lang?: string }) {
-  const { trip, lang = 'en' } = props;
+  const { trip, t, lang = 'en' } = props;
+  const activeLang = normalizeLang(lang);
+  const translate = (key: string) => t?.(key) ?? FALLBACK[key as keyof typeof FALLBACK] ?? key;
   const driverName = trip.driver?.display_name || trip.display_name || null;
   const avatarUrl = (trip.driver?.avatar_url || trip.avatar_url) ?? undefined;
   const receivedRatingAvg = trip.driver?.rating_avg ?? trip.driver_received_rating_avg;
   const receivedRatingCount = trip.driver?.rating_count || trip.driver_received_rating_count;
-  const { time, date } = formatDepartureDate(trip.departure_time, lang);
-  const priceDisplay = formatPrice(trip.price_cents);
+  const time = formatLocalizedTime(activeLang, trip.departure_time);
+  const date = getRelativeDayLabel(activeLang, trip.departure_time, translate);
+  const priceDisplay = formatPriceLabel(trip.price_cents, translate);
   const showSeatUrgency = trip.seats_available <= 2;
-  const seatsLabel = trip.seats_available === 1 ? '1 seat left' : `${trip.seats_available} seats left`;
-  const isToday = date === 'Today';
+  const seatsLabel = formatSeatAvailability(trip.seats_available, translate);
+  const seatCountLabel = formatSeatCount(trip.seats_available, translate);
+  const isToday = date === translate('today');
 
   return (
     <Link
@@ -71,6 +83,11 @@ export function TripCard(props: { trip: TripCardTrip; t?: (k: string) => string;
       <div className="pl-5 pr-4 pt-4 pb-4 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div>
+            <CommunityBadge
+              name={trip.community_name}
+              type={trip.community_type}
+              compact
+            />
             <div className="flex items-baseline gap-1.5">
               <span className="text-lg font-bold text-slate-900 dark:text-slate-100 tabular-nums leading-none">
                 {time}
@@ -79,12 +96,17 @@ export function TripCard(props: { trip: TripCardTrip; t?: (k: string) => string;
                 {date}
               </span>
             </div>
+            {trip.community_type === 'public' && (
+              <p className="mt-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                {PUBLIC_COPY[activeLang]}
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col items-end gap-1 shrink-0">
             {priceDisplay && (
               <span className={`text-sm font-bold tabular-nums ${
-                priceDisplay === 'Free'
+                priceDisplay === translate('free')
                   ? 'text-emerald-600 dark:text-emerald-400'
                   : 'text-slate-900 dark:text-slate-100'
               }`}>
@@ -97,7 +119,7 @@ export function TripCard(props: { trip: TripCardTrip; t?: (k: string) => string;
         <div>
           <div className="flex items-center gap-2.5">
             <div className="w-2 h-2 rounded-full bg-sky-500 shrink-0" />
-            <p className="font-semibold text-slate-900 dark:text-slate-100 text-sm leading-snug truncate">
+            <p className="font-semibold text-slate-900 dark:text-slate-100 text-sm leading-snug truncate" dir="auto">
               {trip.origin_name}
             </p>
           </div>
@@ -109,7 +131,7 @@ export function TripCard(props: { trip: TripCardTrip; t?: (k: string) => string;
           </div>
           <div className="flex items-center gap-2.5">
             <div className="w-2 h-2 rounded-full border-2 border-emerald-500 shrink-0" />
-            <p className="font-semibold text-slate-900 dark:text-slate-100 text-sm leading-snug truncate">
+            <p className="font-semibold text-slate-900 dark:text-slate-100 text-sm leading-snug truncate" dir="auto">
               {trip.destination_name}
             </p>
           </div>
@@ -120,19 +142,19 @@ export function TripCard(props: { trip: TripCardTrip; t?: (k: string) => string;
             {avatarUrl ? (
               <Image
                 src={avatarUrl}
-                alt={driverName ?? 'Driver'}
+                alt={driverName ?? translate('driver')}
                 width={24}
                 height={24}
                 className="w-6 h-6 rounded-full border border-slate-200 dark:border-slate-700 object-cover shrink-0"
               />
             ) : (
               <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-500">
-                {(driverName?.[0] ?? 'D').toUpperCase()}
+                {(driverName?.[0] ?? translate('driver')[0]).toUpperCase()}
               </div>
             )}
             <div className="flex flex-col min-w-0">
               <span className="text-xs font-medium text-slate-600 dark:text-slate-400 truncate max-w-[90px] leading-tight">
-                {driverName ?? 'Community member'}
+                {driverName ?? translate('community_member')}
               </span>
               <DriverTrustSummary
                 ratingAvg={receivedRatingAvg}
@@ -153,7 +175,7 @@ export function TripCard(props: { trip: TripCardTrip; t?: (k: string) => string;
             </span>
           ) : (
             <span className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-              {trip.seats_available} seats
+              {seatCountLabel}
             </span>
           )}
         </div>

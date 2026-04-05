@@ -95,6 +95,8 @@ export async function searchTrips(params: SearchTripsParams) {
     const result: TripSearchResult = {
       id: doc.id,
       community_id: t.community_id,
+      community_name: typeof t.community_name === 'string' ? t.community_name : null,
+      community_type: t.community_type === 'public' ? 'public' : t.community_type === 'verified' ? 'verified' : null,
       driver_id: t.driver_id,
       origin_name: t.origin_name,
       destination_name: t.destination_name,

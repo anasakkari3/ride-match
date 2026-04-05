@@ -1,9 +1,47 @@
 import Link from 'next/link';
-import { dictionaries, Lang, translate } from '@/lib/i18n/dictionaries';
-import { cookies } from 'next/headers';
-import { getInboxThreads } from '@/lib/services/message';
-import { getCurrentUser } from '@/lib/auth/session';
 import { redirect } from 'next/navigation';
+import CommunityBadge from '@/components/CommunityBadge';
+import { getCurrentUser } from '@/lib/auth/session';
+import { getServerI18n } from '@/lib/i18n/server';
+import { formatLocalizedDate, formatLocalizedTime } from '@/lib/i18n/locale';
+import { getCoordinationActionText } from '@/lib/i18n/runtime-text';
+import { getInboxThreads } from '@/lib/services/message';
+
+const COPY = {
+  en: {
+    title: 'Trip communication',
+    noMessagesYet: 'No messages yet',
+    noMessagesDesc: 'Conversations will appear here once you connect with drivers or passengers.',
+    driverPrefix: 'Driver',
+    driverSeat: 'You are driving',
+    updatesOnly: 'Updates only',
+    noMessagesPreview: 'No messages yet. Open the trip to coordinate.',
+    restrictedPreview: 'Trip updates only. Direct messages are limited for this shared trip.',
+    youLabel: 'You',
+  },
+  ar: {
+    title: 'التواصل حول الرحلات',
+    noMessagesYet: 'لا توجد رسائل بعد',
+    noMessagesDesc: 'ستظهر المحادثات هنا بمجرد تواصلك مع السائقين أو الركاب.',
+    driverPrefix: 'السائق',
+    driverSeat: 'أنت السائق',
+    updatesOnly: 'تحديثات فقط',
+    noMessagesPreview: 'لا توجد رسائل بعد. افتح الرحلة لبدء التنسيق.',
+    restrictedPreview: 'تحديثات الرحلة فقط. الرسائل المباشرة محدودة في هذه الرحلة المشتركة.',
+    youLabel: 'أنت',
+  },
+  he: {
+    title: 'תקשורת סביב הנסיעה',
+    noMessagesYet: 'עדיין אין הודעות',
+    noMessagesDesc: 'השיחות יופיעו כאן ברגע שתתחברו עם נהגים או נוסעים.',
+    driverPrefix: 'נהג',
+    driverSeat: 'אתם הנהג',
+    updatesOnly: 'עדכונים בלבד',
+    noMessagesPreview: 'עדיין אין הודעות. פתחו את הנסיעה כדי לתאם.',
+    restrictedPreview: 'רק עדכוני נסיעה. הודעות ישירות מוגבלות בנסיעה המשותפת הזאת.',
+    youLabel: 'אתם',
+  },
+} as const;
 
 export default async function MessagesPage() {
   const user = await getCurrentUser();
@@ -11,12 +49,8 @@ export default async function MessagesPage() {
     redirect('/login');
   }
 
-  const cookieStore = await cookies();
-  const langValue = cookieStore.get('NEXT_LOCALE')?.value as Lang | undefined;
-  const lang: Lang = langValue || 'en';
-  const dict = dictionaries[lang] || dictionaries.en;
-  const t = (key: keyof typeof dictionaries.en) => translate(dict, key);
-
+  const { lang, t } = await getServerI18n();
+  const copy = COPY[lang] ?? COPY.en;
   const threads = await getInboxThreads();
 
   if (threads.length === 0) {
@@ -27,10 +61,10 @@ export default async function MessagesPage() {
             💬
           </div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
-            {t('messages_empty_title')}
+            {copy.noMessagesYet}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 max-w-[260px] mx-auto leading-relaxed">
-            {t('messages_empty_desc')}
+            {copy.noMessagesDesc}
           </p>
           <Link
             href="/app"
@@ -45,36 +79,48 @@ export default async function MessagesPage() {
 
   return (
     <div className="p-4 max-w-lg mx-auto space-y-4 pb-24">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-6 tracking-tight">Trip communication</h1>
+      <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-6 tracking-tight">
+        {copy.title}
+      </h1>
 
       <div className="space-y-3">
         {threads.map((thread) => {
           const isMyMessage = thread.lastMessage?.sender_id === user.id;
-          const senderName = thread.lastMessage?.sender?.display_name || 'Someone';
+          const senderName = thread.lastMessage?.sender?.display_name || t('someone');
           const isCoordination = !!thread.lastMessage?.coordination_action;
-          const msgTime = thread.lastMessage
-            ? new Date(thread.lastMessage.created_at).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' })
-            : '';
-          const tripDateString = new Date(thread.tripDate).toLocaleDateString(lang, {
+          const msgTime = thread.lastMessage ? formatLocalizedTime(lang, thread.lastMessage.created_at) : '';
+          const tripDateString = formatLocalizedDate(lang, thread.tripDate, {
             weekday: 'short',
             month: 'short',
             day: 'numeric',
           });
 
-          let previewText = 'No messages yet. Open the trip to coordinate.';
+          let previewText: string = copy.noMessagesPreview;
           if (thread.lastMessage) {
-            previewText = isMyMessage
-              ? `You: ${thread.lastMessage.content}`
-              : `${senderName}: ${thread.lastMessage.content}`;
-
-            if (isCoordination) {
-              previewText = `${isMyMessage ? 'You' : senderName} ${thread.lastMessage.content}`;
+            if (thread.lastMessage.coordination_action) {
+              previewText = getCoordinationActionText(
+                thread.lastMessage.coordination_action,
+                lang,
+                senderName,
+                isMyMessage
+              );
+            } else {
+              previewText = isMyMessage
+                ? `${copy.youLabel}: ${thread.lastMessage.content}`
+                : `${senderName}: ${thread.lastMessage.content}`;
             }
           }
 
           if (thread.isRestricted && thread.canSendMessages === false && !thread.lastMessage) {
-            previewText = 'Trip updates only. Direct messages are limited for this shared trip.';
+            previewText = copy.restrictedPreview;
           }
+
+          const conversationWith =
+            thread.conversationWith === 'Driver' ? t('driver') : thread.conversationWith;
+          const counterpartLabel: string =
+            thread.currentUserRole === 'driver'
+              ? copy.driverSeat
+              : `${copy.driverPrefix}: ${conversationWith}`;
 
           return (
             <Link
@@ -89,22 +135,25 @@ export default async function MessagesPage() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline justify-between gap-2 mb-0.5">
-                    <h3 className="font-bold text-slate-900 dark:text-slate-100 truncate">
-                      {thread.tripTitle}
-                    </h3>
+                    <div className="min-w-0">
+                      <CommunityBadge name={thread.communityName} type={thread.communityType} compact />
+                      <h3 className="font-bold text-slate-900 dark:text-slate-100 truncate mt-1" dir="auto">
+                        {thread.tripOrigin} → {thread.tripDestination}
+                      </h3>
+                    </div>
                     <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">
                       {tripDateString}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <p className="text-sm font-medium text-sky-600 dark:text-sky-400 truncate">
-                      {thread.currentUserRole === 'driver' ? 'You are driving' : `Driver: ${thread.conversationWith}`}
+                    <p className="text-sm font-medium text-sky-600 dark:text-sky-400 truncate" dir="auto">
+                      {counterpartLabel}
                     </p>
                     <div className="flex items-center gap-2">
                       {thread.isRestricted && (
                         <span className="text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400">
-                          Updates only
+                          {copy.updatesOnly}
                         </span>
                       )}
                       {msgTime && (
@@ -115,7 +164,14 @@ export default async function MessagesPage() {
                     </div>
                   </div>
 
-                  <p className={`text-sm truncate ${isCoordination ? 'font-medium text-slate-700 dark:text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                  <p
+                    className={`text-sm truncate ${
+                      isCoordination
+                        ? 'font-medium text-slate-700 dark:text-slate-300'
+                        : 'text-slate-500 dark:text-slate-400'
+                    }`}
+                    dir="auto"
+                  >
                     {previewText}
                   </p>
                 </div>
