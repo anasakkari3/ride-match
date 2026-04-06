@@ -1,4 +1,4 @@
-# Batreeqak — بطريقك
+# onway — بطريقك
 
 **A smart, community-centered ride coordination platform.**
 
