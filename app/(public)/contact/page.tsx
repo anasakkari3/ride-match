@@ -1,4 +1,5 @@
 import PublicInfoPage from '@/components/public/PublicInfoPage';
+import { BRAND_NAME, brandCopy } from '@/lib/brand/config';
 import type { Lang } from '@/lib/i18n/dictionaries';
 import { formatLocalizedDate } from '@/lib/i18n/locale';
 import { getServerLang } from '@/lib/i18n/server';
@@ -31,9 +32,9 @@ const CONTACT_COPY: Record<
 > = {
   en: {
     eyebrow: 'Contact Us',
-    title: 'How to Reach OnWay Support',
+    title: `How to Reach ${BRAND_NAME} Support`,
     description:
-      'OnWay is currently set up for lightweight support. This page explains the right contact path depending on the kind of issue you have.',
+      `${BRAND_NAME} is currently set up for lightweight support. This page explains the right contact path depending on the kind of issue you have.`,
     cards: [
       {
         title: 'Trip or community issue',
@@ -41,7 +42,7 @@ const CONTACT_COPY: Record<
       },
       {
         title: 'Account or privacy request',
-        body: 'If you need help with your account, profile data, or a privacy-related request, contact the team operating your OnWay deployment. In many pilots, this is the organization, school, workplace, or local community that invited you to use the app.',
+        body: `If you need help with your account, profile data, or a privacy-related request, contact the team operating your ${BRAND_NAME} deployment. In many pilots, this is the organization, school, workplace, or local community that invited you to use the app.`,
       },
       {
         title: 'Safety concern',
@@ -50,7 +51,7 @@ const CONTACT_COPY: Record<
     ],
     supportTitle: 'Current support model',
     supportParagraphs: [
-      'OnWay does not offer live chat, phone support, or a built-in contact form yet. Support is intentionally lightweight at this stage so the product can stay simple while the core ride coordination flow matures.',
+      `${BRAND_NAME} does not offer live chat, phone support, or a built-in contact form yet. Support is intentionally lightweight at this stage so the product can stay simple while the core ride coordination flow matures.`,
       'The organization running this deployment may publish additional support details here over time, but the contact paths above are the current official routes for help.',
     ],
   },
@@ -108,7 +109,7 @@ const CONTACT_COPY: Record<
 
 export default async function ContactPage() {
   const lang = await getServerLang();
-  const copy = CONTACT_COPY[lang] ?? CONTACT_COPY.en;
+  const copy = brandCopy(CONTACT_COPY[lang] ?? CONTACT_COPY.en);
   const lastUpdated = formatLocalizedDate(lang, '2026-04-05', {
     year: 'numeric',
     month: 'long',

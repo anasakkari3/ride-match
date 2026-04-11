@@ -1,6 +1,12 @@
 import { getAdminFirestore } from '@/lib/firebase/firestore-admin';
 import { getCurrentUser } from '@/lib/auth/session';
-import type { BookingWithPassenger, BookingsRow, TripsRow, UserProfile } from '@/lib/types';
+import type {
+  BookingAcknowledgementsRow,
+  BookingWithPassenger,
+  BookingsRow,
+  TripsRow,
+  UserProfile,
+} from '@/lib/types';
 import { trackEvent } from './analytics';
 import { UnauthorizedError, NotFoundError, AppError } from '@/lib/utils/errors';
 import { createNotification } from './notification';
@@ -9,6 +15,14 @@ import { getEffectiveTripStatus, syncTripStatusWithSeats } from '@/lib/trips/lif
 import { logWarn } from '@/lib/observability/logger';
 import { queuePassengerTripMembership } from './trip-membership';
 import { describeProfileActionFields, getBasicProfileActionReadiness } from './user';
+import {
+  collapseBookingsByPassenger,
+  getTripPassengerBookingId,
+} from '@/lib/bookings/canonical';
+import {
+  doesPassengerGenderMatchPreference,
+  normalizeTripPassengerGenderPreference,
+} from '@/lib/trips/comfort';
 
 function buildPassengerSnapshot(
   userId: string,
@@ -18,14 +32,31 @@ function buildPassengerSnapshot(
     id: userId,
     display_name: typeof data?.display_name === 'string' ? data.display_name : null,
     avatar_url: typeof data?.avatar_url === 'string' ? data.avatar_url : null,
+    gender: typeof data?.gender === 'string' ? data.gender : null,
     rating_avg: typeof data?.rating_avg === 'number' ? data.rating_avg : 0,
     rating_count: typeof data?.rating_count === 'number' ? data.rating_count : 0,
   };
 }
 
-export async function bookSeat(tripId: string, seats: number = 1) {
+export async function bookSeat(
+  tripId: string,
+  seats: number = 1,
+  acknowledgements?: {
+    tripRules: boolean;
+    platformRole: boolean;
+    supportPath: boolean;
+  }
+) {
   const user = await getCurrentUser();
   if (!user) throw new UnauthorizedError();
+
+  if (
+    !acknowledgements?.tripRules ||
+    !acknowledgements?.platformRole ||
+    !acknowledgements?.supportPath
+  ) {
+    throw new AppError('Booking acknowledgements are required', 'BAD_REQUEST');
+  }
 
   const db = getAdminFirestore();
 
@@ -54,11 +85,10 @@ export async function bookSeat(tripId: string, seats: number = 1) {
           ? 'public'
           : 'verified';
 
-    const existingBookings = await tx.get(
+    const existingPassengerBookingsSnap = await tx.get(
       db.collection('bookings')
         .where('trip_id', '==', tripId)
         .where('passenger_id', '==', user.id)
-        .where('status', '==', 'confirmed')
     );
 
     const communityMembershipRef = db.collection('community_members').doc(`${tripData.community_id}_${user.id}`);
@@ -69,13 +99,33 @@ export async function bookSeat(tripId: string, seats: number = 1) {
     ]);
     const userProfileData = userProfileDoc.data() ?? null;
     const passengerSnapshot = buildPassengerSnapshot(user.id, userProfileData);
+    const existingPassengerBookings = existingPassengerBookingsSnap.docs.map((doc) => ({
+      id: doc.id,
+      ref: doc.ref,
+      data: {
+        id: doc.id,
+        ...(doc.data() as Omit<BookingsRow, 'id'>),
+      } as BookingsRow,
+    }));
+    const confirmedPassengerBookings = existingPassengerBookings.filter(
+      (booking) => booking.data.status === 'confirmed'
+    );
     const joinGate = canJoinTrip(
       user.id,
       effectiveTrip,
-      !existingBookings.empty,
+      confirmedPassengerBookings.length > 0,
       communityMembershipDoc.exists
     );
     if (!joinGate.allowed) {
+      if (joinGate.reason === 'duplicate_booking') {
+        logWarn('booking.join_denied', {
+          tripId,
+          userId: user.id,
+          reason: joinGate.reason,
+          confirmedBookingIds: confirmedPassengerBookings.map((booking) => booking.id),
+        });
+        throw new AppError('You already booked this trip', 'DUPLICATE_BOOKING', 409);
+      }
       logWarn('booking.join_denied', {
         tripId,
         userId: user.id,
@@ -125,6 +175,29 @@ export async function bookSeat(tripId: string, seats: number = 1) {
     if (!Number.isInteger(seats) || seats < 1) {
       throw new AppError('Must book at least 1 whole seat', 'BAD_REQUEST');
     }
+    if (seats !== 1) {
+      throw new AppError('Only one seat per user is supported right now', 'BAD_REQUEST');
+    }
+    const passengerGenderPreference = normalizeTripPassengerGenderPreference(
+      tripData.passenger_gender_preference
+    );
+    if (
+      !doesPassengerGenderMatchPreference(userProfileData?.gender, passengerGenderPreference)
+    ) {
+      logWarn('booking.gender_preference_denied', {
+        tripId,
+        userId: user.id,
+        passengerGenderPreference,
+        passengerGender: userProfileData?.gender ?? null,
+      });
+      throw new AppError(
+        passengerGenderPreference === 'women_only'
+          ? 'This trip is limited to women riders'
+          : 'This trip is limited to men riders',
+        'FORBIDDEN',
+        403
+      );
+    }
     if (effectiveTrip.seats_available < seats) {
       throw new AppError('Not enough seats available', 'BAD_REQUEST');
     }
@@ -132,13 +205,25 @@ export async function bookSeat(tripId: string, seats: number = 1) {
     const nextSeatsAvailable = effectiveTrip.seats_available - seats;
     const nextStatus = syncTripStatusWithSeats(effectiveTrip.status, nextSeatsAvailable);
 
-    const bookingRef = db.collection('bookings').doc();
+    const reusableBookingDoc = existingPassengerBookings
+      .filter((booking) => booking.data.status !== 'confirmed')
+      .sort((left, right) => Date.parse(right.data.created_at) - Date.parse(left.data.created_at))[0];
+    const bookingRef =
+      reusableBookingDoc?.ref ??
+      db.collection('bookings').doc(getTripPassengerBookingId(tripId, user.id));
     const createdAt = new Date().toISOString();
+    const bookingAcknowledgements: BookingAcknowledgementsRow = {
+      trip_rules: true,
+      platform_role: true,
+      support_path: true,
+      acknowledged_at: createdAt,
+    };
     tx.set(bookingRef, {
       trip_id: tripId,
       passenger_id: user.id,
       passenger_display_name: passengerSnapshot.display_name,
       passenger_avatar_url: passengerSnapshot.avatar_url,
+      booking_acknowledgements: bookingAcknowledgements,
       seats,
       status: 'confirmed',
       created_at: createdAt,
@@ -169,6 +254,7 @@ export async function bookSeat(tripId: string, seats: number = 1) {
         passenger_id: user.id,
         passenger_display_name: passengerSnapshot.display_name,
         passenger_avatar_url: passengerSnapshot.avatar_url,
+        booking_acknowledgements: bookingAcknowledgements,
         seats,
         status: 'confirmed' as const,
         created_at: createdAt,
@@ -190,7 +276,7 @@ export async function bookSeat(tripId: string, seats: number = 1) {
         userId: driverId,
         type: 'booking',
         title: 'New Booking',
-        body: `${result.booking.passenger?.display_name ?? 'Someone'} booked ${seats} seat(s) on your trip.`,
+        body: `${result.booking.passenger?.display_name ?? 'Someone'} booked a seat on your trip.`,
         linkUrl: `/trips/${tripId}`
       });
     }
@@ -225,13 +311,14 @@ export async function getBookingsForTrip(tripId: string): Promise<BookingWithPas
         id: userDoc.id,
         display_name: u.display_name ?? null,
         avatar_url: u.avatar_url ?? null,
+        gender: u.gender ?? null,
         rating_avg: u.rating_avg ?? 0,
         rating_count: u.rating_count ?? 0,
       });
     }
   }
 
-  return snap.docs.map((d) => {
+  const bookings = snap.docs.map((d) => {
     const data = d.data();
     const snapshotPassenger = buildPassengerSnapshot(data.passenger_id as string, data);
     const passenger = userMap.get(data.passenger_id) ?? snapshotPassenger;
@@ -242,6 +329,8 @@ export async function getBookingsForTrip(tripId: string): Promise<BookingWithPas
       passenger,
     } as BookingWithPassenger;
   });
+
+  return collapseBookingsByPassenger(bookings);
 }
 
 export async function cancelBooking(bookingId: string) {
@@ -279,18 +368,46 @@ export async function cancelBooking(bookingId: string) {
 
     if (booking.status !== 'confirmed') throw new AppError('Booking already cancelled', 'BAD_REQUEST');
 
-    const cancelledAt = new Date().toISOString();
-
-    tx.update(bookingRef, {
-      status: 'cancelled',
-      cancelled_at: cancelledAt,
-      cancelled_by: user.id,
-    });
-
-    // Inject cancellation signal
     const userRef = db.collection('users').doc(user.id);
     const userDoc = await tx.get(userRef);
     const userProfile = userDoc.data();
+
+    const relatedConfirmedBookingsSnap = await tx.get(
+      db.collection('bookings')
+        .where('trip_id', '==', booking.trip_id)
+        .where('passenger_id', '==', booking.passenger_id)
+        .where('status', '==', 'confirmed')
+    );
+    const cancelledAt = new Date().toISOString();
+    const confirmedBookingsToCancel = relatedConfirmedBookingsSnap.docs.map((doc) => ({
+      ref: doc.ref,
+      data: {
+        id: doc.id,
+        ...(doc.data() as Omit<BookingsRow, 'id'>),
+      } as BookingsRow,
+    }));
+    const totalSeatsToRelease = confirmedBookingsToCancel.reduce(
+      (sum, entry) => sum + entry.data.seats,
+      0
+    );
+
+    if (confirmedBookingsToCancel.length > 1) {
+      logWarn('booking.duplicate_cleanup', {
+        tripId: booking.trip_id,
+        passengerId: booking.passenger_id,
+        bookingIds: confirmedBookingsToCancel.map((entry) => entry.data.id),
+      });
+    }
+
+    confirmedBookingsToCancel.forEach((entry) => {
+      tx.update(entry.ref, {
+        status: 'cancelled',
+        cancelled_at: cancelledAt,
+        cancelled_by: user.id,
+      });
+    });
+
+    // Inject cancellation signal
     const messageRef = db.collection('messages').doc();
     tx.set(messageRef, {
       trip_id: booking.trip_id,
@@ -304,8 +421,8 @@ export async function cancelBooking(bookingId: string) {
 
     // Ensure seats don't exceed the total capacity
     const currentSeats = effectiveTrip.seats_available ?? 0;
-    const totalSeats = effectiveTrip.seats_total ?? booking.seats;
-    const updatedSeats = Math.min(currentSeats + booking.seats, totalSeats);
+    const totalSeats = effectiveTrip.seats_total ?? totalSeatsToRelease;
+    const updatedSeats = Math.min(currentSeats + totalSeatsToRelease, totalSeats);
     const nextStatus = syncTripStatusWithSeats(effectiveTrip.status, updatedSeats);
 
     tx.update(tripRef, {
@@ -326,7 +443,7 @@ export async function cancelBooking(bookingId: string) {
       driverId: effectiveTrip.driver_id, 
       passengerId: booking.passenger_id, 
       tripId: booking.trip_id, 
-      seats: booking.seats,
+      seats: totalSeatsToRelease,
       status: nextStatus,
       cancelledAt,
       cancelledBy: user.id,

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Suspense, useMemo, useState } from 'react';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import BrandLogo from '@/components/BrandLogo';
+import { BRAND_NAME, brandCopy } from '@/lib/brand/config';
 import { useTranslation } from '@/lib/i18n/LanguageProvider';
 import { getFirebaseAuth } from '@/lib/firebase/config';
 import { setSessionAndSync } from './actions';
@@ -48,7 +49,7 @@ const COPY: Record<SupportedLang, ScreenCopy> = {
     subtitle: 'Simple ride coordination for real communities.',
     heroTitle: 'Sign in to a calmer, more trustworthy trip flow.',
     heroDescription:
-      'OnWay keeps ride coordination scoped to communities, makes expectations clear, and stays honest about what trust features are already live.',
+      `${BRAND_NAME} keeps ride coordination scoped to communities, makes expectations clear, and stays honest about what trust features are already live.`,
     signin: 'Sign in',
     signup: 'Sign up',
     fullName: 'Full name',
@@ -82,10 +83,10 @@ const COPY: Record<SupportedLang, ScreenCopy> = {
       'Profile details are used to help people recognize who they are coordinating with. Safety tools, moderation, and community scope are real product features. Fake verification claims are not.',
   },
   ar: {
-    subtitle: 'تنسيق رحلات بسيط ومنظم لمجتمعات حقيقية.',
-    heroTitle: 'سجّل الدخول إلى تجربة رحلات أهدأ وأكثر ثقة.',
+    subtitle: 'تنظيم رحلات بسيط وموثوق داخل مجتمعك.',
+    heroTitle: 'سجّل دخولك وابدأ رحلاتك بسهولة وثقة.',
     heroDescription:
-      'يبقي OnWay تنسيق الرحلات داخل المجتمعات، ويوضح التوقعات من البداية، ويبقى صريحًا بشأن ميزات الثقة التي أصبحت جاهزة فعلًا.',
+      `يبقي ${BRAND_NAME} تنسيق الرحلات داخل المجتمعات، ويوضح التوقعات من البداية، ويبقى صريحًا بشأن ميزات الثقة التي أصبحت جاهزة فعلًا.`,
     signin: 'تسجيل الدخول',
     signup: 'إنشاء حساب',
     fullName: 'الاسم الكامل',
@@ -99,7 +100,7 @@ const COPY: Record<SupportedLang, ScreenCopy> = {
     createAccount: 'إنشاء الحساب',
     signinHint: 'سجّل الدخول للانضمام إلى المجتمعات وتنسيق الرحلات.',
     signupHint: 'أنشئ حسابك الآن، ثم أكمل التفاصيل الأساسية التي يحتاجها الناس للتنسيق معك.',
-    signInFailed: 'فشل تسجيل الدخول',
+    signInFailed: 'فشل تسجيل الدخول. تأكد من بياناتك وحاول مرة أخرى.',
     emailInUse: 'هذا البريد مستخدم بالفعل. جرّب تسجيل الدخول بدلًا من ذلك.',
     invalidCredentials: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
     noAccount: 'لا يوجد حساب بهذا البريد. أنشئ حسابًا أولًا.',
@@ -122,7 +123,7 @@ const COPY: Record<SupportedLang, ScreenCopy> = {
     subtitle: 'תיאום נסיעות פשוט ומסודר לקהילות אמיתיות.',
     heroTitle: 'התחברו לזרימת נסיעות רגועה ואמינה יותר.',
     heroDescription:
-      'OnWay שומרת את תיאום הנסיעות בתוך קהילות, מבהירה ציפיות מראש, ונשארת כנה לגבי אילו שכבות אמון כבר פעילות בפועל.',
+      `${BRAND_NAME} שומרת את תיאום הנסיעות בתוך קהילות, מבהירה ציפיות מראש, ונשארת כנה לגבי אילו שכבות אמון כבר פעילות בפועל.`,
     signin: 'התחברות',
     signup: 'יצירת חשבון',
     fullName: 'שם מלא',
@@ -163,7 +164,7 @@ function getCopy(lang: string): ScreenCopy {
 
 function LoginContent() {
   const { lang, t } = useTranslation();
-  const copy = getCopy(lang);
+  const copy = useMemo(() => brandCopy(getCopy(lang)), [lang]);
   const [mode, setMode] = useState<Mode>('signin');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -391,7 +392,7 @@ function LoginContent() {
 
 export default function LoginClient() {
   const { lang } = useTranslation();
-  const copy = getCopy(lang);
+  const copy = useMemo(() => brandCopy(getCopy(lang)), [lang]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-sky-50 via-white to-cyan-50/50 p-4 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
@@ -402,7 +403,7 @@ export default function LoginClient() {
         <div className="grid w-full items-center gap-6 lg:grid-cols-[1.05fr_0.85fr]">
           <section className="rounded-[32px] border border-white/60 bg-white/60 p-8 shadow-elevated backdrop-blur-xl dark:border-slate-800/50 dark:bg-slate-900/45 sm:p-10 lg:p-12">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-sky-600 dark:text-sky-400">
-              OnWay
+              {BRAND_NAME}
             </p>
             <h2 className="mt-4 max-w-xl text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
               {copy.heroTitle}

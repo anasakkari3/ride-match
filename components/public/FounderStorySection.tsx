@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { getBrandDisplayName } from '@/lib/brand/config';
+import { BRAND_NAME, brandCopy } from '@/lib/brand/config';
 import { useTranslation } from '@/lib/i18n/LanguageProvider';
 import type { Lang } from '@/lib/i18n/dictionaries';
 
@@ -24,13 +24,13 @@ const COPY: Record<Lang, FounderCopy> = {
     eyebrow: 'About the founder',
     title: 'Built from a real problem people were already dealing with every day',
     story: [
-      'Anas Akkari started OnWay after watching the same issue repeat itself around him: students and young people trying to coordinate rides between cities without a simple system that actually fit how local communities move.',
-      'The existing options often felt too complicated, too unsafe, or too generic for the way people really organize travel in their own circles. OnWay was built to make that process feel simple, organized, and trustworthy from the start.',
+      `Anas Akkari started ${BRAND_NAME} after watching the same issue repeat itself around him: students and young people trying to coordinate rides between cities without a simple system that actually fit how local communities move.`,
+      `The existing options often felt too complicated, too unsafe, or too generic for the way people really organize travel in their own circles. ${BRAND_NAME} was built to make that process feel simple, organized, and trustworthy from the start.`,
     ],
-    nameNote: 'The Arabic idea behind the brand, بطريقك, carries both the feeling of being on your way and the visual personality that can grow into a distinctive identity over time.',
+    nameNote: `The Arabic idea behind the brand, ${BRAND_NAME}, carries both the feeling of being on your way and the visual personality that can grow into a distinctive identity over time.`,
     whyTitle: 'Why I built it',
     whyQuote: '"This was never just a startup concept. It came from a daily frustration: people already needed rides, but the process around finding them and organizing them was messy. I wanted to build something people could actually use without friction and trust without feeling out of place."',
-    role: 'Founder, OnWay',
+    role: `Founder, ${BRAND_NAME}`,
     focus: 'Focused on building a better way for real communities to coordinate shared travel between cities.',
     tags: ['Community-first', 'Simple coordination', 'Trust by design'],
     cta: 'Connect with me on LinkedIn',
@@ -38,7 +38,7 @@ const COPY: Record<Lang, FounderCopy> = {
   },
   ar: {
     eyebrow: 'عن المؤسس',
-    title: 'بدأت من مشكلة حقيقية كان الناس يعيشونها كل يوم',
+    title: 'بدأت من مشكلة يومية يعاني منها الكثير.',
     story: [
       'بدأ أنس العكاري هذا المشروع بعد أن رأى نفس المشكلة تتكرر حوله: طلاب وشباب يحاولون تنسيق رحلات بين المدن من دون نظام بسيط يناسب فعلاً طريقة حركة المجتمعات المحلية.',
       'الخيارات الموجودة كانت غالباً معقّدة أكثر من اللازم، أو غير مطمئنة، أو غير مناسبة لطريقة تنظيم الناس لرحلاتهم داخل دوائرهم. لذلك بُنيت بطريقك لتجعل العملية أبسط وأكثر ترتيباً وأكثر ثقة منذ البداية.',
@@ -48,7 +48,7 @@ const COPY: Record<Lang, FounderCopy> = {
     whyQuote: '"لم تكن الفكرة مجرد مشروع ناشئ. كانت نابعة من مشكلة يومية: الناس يحتاجون إلى رحلات فعلاً، لكن طريقة البحث عنها وتنظيمها كانت فوضوية. أردت أن أبني شيئاً يمكن للناس استخدامه بسهولة ويثقوا به من دون أن يشعروا أنه غريب عنهم."',
     role: 'المؤسس، بطريقك',
     focus: 'أركّز على بناء طريقة أفضل لمجتمعات حقيقية تنسّق السفر المشترك بين المدن.',
-    tags: ['مجتمعي أولاً', 'تنسيق أبسط', 'ثقة من التصميم'],
+    tags: ['مجتمع موثوق', 'تنظيم بسيط', 'تجربة واضحة'],
     cta: 'تواصل معي على لينكدإن',
     footnote: 'قصة مؤسس مرتبطة بمشكلة المنتج الحقيقية، لا بادعاءات مبالغ فيها.',
   },
@@ -57,12 +57,12 @@ const COPY: Record<Lang, FounderCopy> = {
     title: 'נבנה מתוך בעיה אמיתית שאנשים כבר חיו איתה כל יום',
     story: [
       'אנאס אכארי התחיל את הפרויקט אחרי שראה שוב ושוב את אותה בעיה: סטודנטים וצעירים שמנסים לתאם נסיעות בין ערים בלי מערכת פשוטה שבאמת מתאימה לאופן שבו קהילות מקומיות זזות ומתארגנות.',
-      'הפתרונות הקיימים הרגישו לעיתים קרובות מסובכים מדי, לא בטוחים מספיק, או פשוט לא מותאמים לאופן שבו אנשים מתאמים נסיעות בתוך המעגלים שלהם. לכן OnWay נבנתה כדי להפוך את התהליך לפשוט, מסודר ואמין יותר מההתחלה.',
+      `הפתרונות הקיימים הרגישו לעיתים קרובות מסובכים מדי, לא בטוחים מספיק, או פשוט לא מותאמים לאופן שבו אנשים מתאמים נסיעות בתוך המעגלים שלהם. לכן ${BRAND_NAME} נבנתה כדי להפוך את התהליך לפשוט, מסודר ואמין יותר מההתחלה.`,
     ],
-    nameNote: 'הרעיון הערבי שמאחורי המותג, بطريقك, מחזיק גם את תחושת הדרך והמסלול וגם פוטנציאל לזהות חזותית ייחודית שיכולה להתפתח עם הזמן.',
+    nameNote: `הרעיון הערבי שמאחורי המותג, ${BRAND_NAME}, מחזיק גם את תחושת הדרך והמסלול וגם פוטנציאל לזהות חזותית ייחודית שיכולה להתפתח עם הזמן.`,
     whyTitle: 'למה בניתי את זה',
     whyQuote: '"זו אף פעם לא הייתה רק מחשבת סטארטאפ. זה בא מתוך תסכול יומיומי: אנשים באמת היו צריכים נסיעות, אבל הדרך למצוא אותן ולארגן אותן הייתה מבולגנת. רציתי לבנות משהו שאנשים באמת ישתמשו בו בלי חיכוך ויוכלו לסמוך עליו בלי להרגיש שהוא לא נבנה בשבילם."',
-    role: 'המייסד, OnWay',
+    role: `המייסד, ${BRAND_NAME}`,
     focus: 'ממוקד בבניית דרך טובה יותר לקהילות אמיתיות לתאם נסיעות משותפות בין ערים.',
     tags: ['קהילה תחילה', 'תיאום פשוט', 'אמון בעיצוב'],
     cta: 'התחברו אליי בלינקדאין',
@@ -72,8 +72,7 @@ const COPY: Record<Lang, FounderCopy> = {
 
 export default function FounderStorySection() {
   const { lang } = useTranslation();
-  const copy = COPY[lang];
-  const brandName = getBrandDisplayName(lang);
+  const copy = brandCopy(COPY[lang]);
 
   return (
     <section className="py-20 px-4 bg-white dark:bg-slate-950">
@@ -150,7 +149,7 @@ export default function FounderStorySection() {
               </a>
 
               <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                {copy.footnote.replace('OnWay', brandName)}
+                {copy.footnote}
               </p>
             </div>
           </div>

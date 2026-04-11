@@ -21,6 +21,8 @@ export type DetailCopy = {
   publicBookingDescription: string;
   updateProfile: string;
   confirmBooking: string;
+  bookedStateTitle: string;
+  bookedStateDescription: string;
   openTripCommunication: string;
   openTripUpdates: string;
   tripCancelledTitle: string;
@@ -45,9 +47,13 @@ export type DetailCopy = {
     tripNotFound: string;
     bookingNotFound: string;
     bookingRejected: string;
+    alreadyBooked: string;
     cannotBookBlockedUser: string;
+    womenOnly: string;
+    menOnly: string;
     alreadyDeparted: string;
     wholeSeatRequired: string;
+    singleSeatOnly: string;
     notEnoughSeats: string;
     bookingAlreadyCancelled: string;
     basicProfileRequired: string;
@@ -88,6 +94,9 @@ export const DETAIL_COPY: Record<Lang, DetailCopy> = {
       'Booking here requires a basic profile with display name, phone, city or area, and age.',
     updateProfile: 'Update profile',
     confirmBooking: 'Confirm booking',
+    bookedStateTitle: 'Seat booked',
+    bookedStateDescription:
+      'You already hold one seat on this trip. You can coordinate below or cancel the booking if your plans change.',
     openTripCommunication: 'Open trip communication',
     openTripUpdates: 'Open trip updates',
     tripCancelledTitle: 'Trip cancelled',
@@ -114,9 +123,13 @@ export const DETAIL_COPY: Record<Lang, DetailCopy> = {
       tripNotFound: 'Trip not found.',
       bookingNotFound: 'Booking not found.',
       bookingRejected: 'This booking could not be completed.',
+      alreadyBooked: 'You already booked this trip.',
       cannotBookBlockedUser: 'You cannot book a trip with this user.',
+      womenOnly: 'This trip is limited to women riders.',
+      menOnly: 'This trip is limited to men riders.',
       alreadyDeparted: 'This trip has already departed.',
       wholeSeatRequired: 'You must book at least one whole seat.',
+      singleSeatOnly: 'Only one seat per user is supported right now.',
       notEnoughSeats: 'There are not enough seats available.',
       bookingAlreadyCancelled: 'This booking was already cancelled.',
       basicProfileRequired: 'Complete your basic profile before booking in the public community.',
@@ -143,7 +156,7 @@ export const DETAIL_COPY: Record<Lang, DetailCopy> = {
     whatSignalsMean: 'ماذا تعني هذه المؤشرات',
     signalsDescription:
       'يوضح التقييم المستلم آراء المشاركين الآخرين في الرحلات المكتملة. ويُظهر عدد الرحلات المكتملة عدد الرحلات التي قادها هذا الشخص حتى النهاية. إعداد الملف الشخصي يظهر بشكل منفصل ولا يغيّر أيًّا من هذين الرقمين.',
-    communicationLimitedTitle: 'التواصل في الرحلة محدود',
+    communicationLimitedTitle: 'التواصل في هذه الرحلة محدود.',
     communicationLimitedDescription:
       'إعدادات الحظر تمنع الرسائل المباشرة في هذه الرحلة المشتركة، لكن تحديثات الرحلة المنظمة وحالات الإلغاء وحالة الرحلة نفسها ستظل ظاهرة.',
     availableNow: 'متاح الآن',
@@ -151,9 +164,12 @@ export const DETAIL_COPY: Record<Lang, DetailCopy> = {
       `احجز مقعدًا واحدًا الآن${priceLabel ? ` مقابل ${priceLabel}` : ''}. ستظهر الرحلة بعد ذلك في صندوق تواصل الرحلات لديك.`,
     publicBookingTitle: 'الحجز في المجتمع العام',
     publicBookingDescription:
-      'الحجز هنا يتطلب ملفًا شخصيًا أساسيًا يتضمن الاسم المعروض ورقم الهاتف والمدينة أو المنطقة والعمر.',
+      'يتطلب الحجز هنا إكمال بيانات ملفك الشخصي.',
     updateProfile: 'تحديث الملف الشخصي',
     confirmBooking: 'تأكيد الحجز',
+    bookedStateTitle: 'تم تأكيد حجزك.',
+    bookedStateDescription:
+      'لديك بالفعل مقعد واحد في هذه الرحلة. يمكنك متابعة التنسيق بالأسفل أو إلغاء الحجز إذا تغيّرت خططك.',
     openTripCommunication: 'فتح تواصل الرحلة',
     openTripUpdates: 'فتح تحديثات الرحلة',
     tripCancelledTitle: 'تم إلغاء الرحلة',
@@ -179,13 +195,17 @@ export const DETAIL_COPY: Record<Lang, DetailCopy> = {
       unauthorized: 'ليست لديك صلاحية لتنفيذ هذا الإجراء.',
       tripNotFound: 'لم يتم العثور على الرحلة.',
       bookingNotFound: 'لم يتم العثور على الحجز.',
-      bookingRejected: 'تعذر إتمام هذا الحجز.',
+      bookingRejected: 'لم نتمكن من إتمام هذا الحجز.',
+      alreadyBooked: 'لقد قمت بحجز هذه الرحلة بالفعل.',
       cannotBookBlockedUser: 'لا يمكنك حجز رحلة مع هذا المستخدم.',
+      womenOnly: 'هذه الرحلة مخصصة للراكبات فقط.',
+      menOnly: 'هذه الرحلة مخصصة للركاب الذكور فقط.',
       alreadyDeparted: 'هذه الرحلة غادرت بالفعل.',
       wholeSeatRequired: 'يجب حجز مقعد كامل واحد على الأقل.',
+      singleSeatOnly: 'يمكنك حجز مقعد واحد فقط في هذه الرحلة.',
       notEnoughSeats: 'لا توجد مقاعد كافية متاحة.',
       bookingAlreadyCancelled: 'تم إلغاء هذا الحجز بالفعل.',
-      basicProfileRequired: 'أكمل ملفك الشخصي الأساسي قبل الحجز في المجتمع العام.',
+      basicProfileRequired: 'أكمل بياناتك الشخصية قبل استخدام هذه الميزة.',
       tripUpdateNotAllowed: 'لا يمكنك تعديل هذه الرحلة الآن.',
       invalidTripTransition: 'لا يمكن تغيير حالة هذه الرحلة بهذه الطريقة.',
       startTooEarly: 'يمكنك بدء الرحلة فقط خلال 30 دقيقة من موعد الانطلاق.',
@@ -220,6 +240,9 @@ export const DETAIL_COPY: Record<Lang, DetailCopy> = {
       'הזמנה כאן דורשת פרופיל בסיסי שכולל שם תצוגה, טלפון, עיר או אזור וגיל.',
     updateProfile: 'עדכון פרופיל',
     confirmBooking: 'אשר הזמנה',
+    bookedStateTitle: 'המושב שלך שמור',
+    bookedStateDescription:
+      'כבר שמור לך מושב אחד בנסיעה הזו. אפשר לנהל את התיאום למטה או לבטל אם התוכניות השתנו.',
     openTripCommunication: 'פתח תקשורת נסיעה',
     openTripUpdates: 'פתח עדכוני נסיעה',
     tripCancelledTitle: 'הנסיעה בוטלה',
@@ -246,9 +269,13 @@ export const DETAIL_COPY: Record<Lang, DetailCopy> = {
       tripNotFound: 'הנסיעה לא נמצאה.',
       bookingNotFound: 'ההזמנה לא נמצאה.',
       bookingRejected: 'לא ניתן היה להשלים את ההזמנה הזאת.',
+      alreadyBooked: 'כבר הזמנת את הנסיעה הזו.',
       cannotBookBlockedUser: 'אי אפשר להזמין נסיעה עם המשתמש הזה.',
+      womenOnly: 'הנסיעה הזו מיועדת לנוסעות בלבד.',
+      menOnly: 'הנסיעה הזו מיועדת לנוסעים גברים בלבד.',
       alreadyDeparted: 'הנסיעה הזאת כבר יצאה.',
       wholeSeatRequired: 'צריך להזמין לפחות מושב שלם אחד.',
+      singleSeatOnly: 'כרגע נתמך מושב אחד בלבד לכל משתמש.',
       notEnoughSeats: 'אין מספיק מושבים זמינים.',
       bookingAlreadyCancelled: 'ההזמנה הזאת כבר בוטלה.',
       basicProfileRequired: 'יש להשלים פרופיל בסיסי לפני שמזמינים בקהילה הציבורית.',
@@ -269,14 +296,28 @@ export function localizeTripActionError(message: string, lang: Lang) {
 
   if (normalized.includes('trip not found')) return copy.errors.tripNotFound;
   if (normalized.includes('booking not found')) return copy.errors.bookingNotFound;
+  if (normalized.includes('already booked this trip') || normalized.includes('duplicate_booking')) {
+    return copy.errors.alreadyBooked;
+  }
   if (normalized.includes('booking rejected')) return copy.errors.bookingRejected;
   if (normalized.includes('cannot book a trip with this user')) return copy.errors.cannotBookBlockedUser;
+  if (normalized.includes('limited to women riders')) return copy.errors.womenOnly;
+  if (normalized.includes('limited to men riders')) return copy.errors.menOnly;
   if (normalized.includes('already departed')) return copy.errors.alreadyDeparted;
   if (normalized.includes('must book at least 1 whole seat')) return copy.errors.wholeSeatRequired;
+  if (normalized.includes('only one seat per user is supported right now')) {
+    return copy.errors.singleSeatOnly;
+  }
   if (normalized.includes('not enough seats available')) return copy.errors.notEnoughSeats;
   if (normalized.includes('booking already cancelled')) return copy.errors.bookingAlreadyCancelled;
-  if (normalized.includes('complete your basic profile before booking in the public community')) {
+  if (normalized.includes('complete your basic profile before booking in the public community') ||
+      normalized.includes('profile_incomplete')) {
     return copy.errors.basicProfileRequired;
+  }
+  if (normalized.includes('acknowledgements are required') || normalized.includes('booking acknowledgements')) {
+    if (lang === 'ar') return 'يجب الموافقة على شروط الحجز الثلاثة قبل تأكيد الحجز.';
+    if (lang === 'he') return copy.errors.genericBooking;
+    return 'Booking acknowledgements are required before confirming.';
   }
   if (normalized.includes('unauthorized') || normalized.includes('permission')) {
     return copy.errors.unauthorized;

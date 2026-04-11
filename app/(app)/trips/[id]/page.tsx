@@ -8,6 +8,7 @@ import { canViewTripRoster, isCommunityMember } from '@/lib/auth/permissions';
 import TripDetailClient from './TripDetailClient';
 import { getTripCommunicationAccess } from '@/lib/services/message';
 import { getServerI18n } from '@/lib/i18n/server';
+import { getUserProfile } from '@/lib/services/user';
 
 export default async function TripDetailPage({
   params,
@@ -21,6 +22,7 @@ export default async function TripDetailPage({
   const { t } = await getServerI18n();
 
   const user = await getCurrentUser();
+  const currentUserProfile = user ? await getUserProfile(user.id) : null;
   let trip;
   let bookings;
   let communicationAccess = {
@@ -60,6 +62,7 @@ export default async function TripDetailPage({
         trip={trip}
         bookings={authorizedBookings ?? []}
         currentUserId={user?.id ?? null}
+        currentUserGender={currentUserProfile?.gender ?? null}
         communicationAccess={communicationAccess}
         wasJustCreated={resolvedSearchParams?.created === '1'}
       />

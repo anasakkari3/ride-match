@@ -42,7 +42,12 @@ export default async function TripChatPage({
   const user = await getCurrentUser();
   if (!user) redirect('/login');
 
-  const communicationAccess = await getTripCommunicationAccess(id);
+  // Ask the access check to also backfill the trip_membership doc on first
+  // entry. The chat client uses that doc as its in-session revocation signal,
+  // so a missing doc would otherwise eject legacy-trip users.
+  const communicationAccess = await getTripCommunicationAccess(id, {
+    backfillMembership: true,
+  });
   if (!communicationAccess.canView) {
     logWarn('chat.page_access_denied', {
       tripId: id,

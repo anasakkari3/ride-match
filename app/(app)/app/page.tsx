@@ -20,16 +20,19 @@ import { inferUserContext } from '@/lib/utils/context';
 import { getTripStatusPresentationWithTranslation } from '@/lib/trips/presentation';
 import { formatLocalizedDate } from '@/lib/i18n/locale';
 import { getServerI18n } from '@/lib/i18n/server';
+import { normalizeDriverGenderFilter } from '@/lib/trips/comfort';
 
 function buildAppHref(input?: {
   communityId?: string | null;
   originName?: string;
   destinationName?: string;
+  driverGender?: string | null;
 }) {
   const params = new URLSearchParams();
   if (input?.communityId) params.set('community_id', input.communityId);
   if (input?.originName) params.set('originName', input.originName);
   if (input?.destinationName) params.set('destinationName', input.destinationName);
+  if (input?.driverGender && input.driverGender !== 'any') params.set('driverGender', input.driverGender);
   const query = params.toString();
   return query ? `/app?${query}` : '/app';
 }
@@ -159,6 +162,9 @@ export default async function HomePage(props: {
   const isSearchActive = !!searchParams.originName || !!searchParams.destinationName;
   const originQuery = typeof searchParams.originName === 'string' ? searchParams.originName : '';
   const destQuery = typeof searchParams.destinationName === 'string' ? searchParams.destinationName : '';
+  const driverGenderQuery = normalizeDriverGenderFilter(
+    typeof searchParams.driverGender === 'string' ? searchParams.driverGender : null
+  );
 
   let myTrips: Awaited<ReturnType<typeof getMyTripsAsDriver>> = [];
   let myBookings: Awaited<ReturnType<typeof getMyBookings>> = [];
@@ -205,6 +211,7 @@ export default async function HomePage(props: {
       communityId: community.id,
       originName: isSearchActive ? originQuery : undefined,
       destinationName: isSearchActive ? destQuery : undefined,
+      driverGender: isSearchActive ? driverGenderQuery : undefined,
     }),
   }));
   const communitySwitcherDescription = selectedCommunity
@@ -276,6 +283,7 @@ export default async function HomePage(props: {
             communityId={selectedCommunity?.id}
             initialOrigin={originQuery}
             initialDestination={destQuery}
+            initialDriverGenderFilter={driverGenderQuery}
             clearHref={clearSearchHref}
             communitySelectionRequired={hasMultipleCommunities}
           />
@@ -289,6 +297,7 @@ export default async function HomePage(props: {
                     communityId: selectedCommunity.id,
                     originName: route.origin,
                     destinationName: route.dest,
+                    driverGender: driverGenderQuery,
                   })}
                   className="shrink-0 flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-full text-slate-700 dark:text-slate-300 font-medium hover:bg-sky-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
                 >
@@ -307,6 +316,7 @@ export default async function HomePage(props: {
               communityId={selectedCommunity.id}
               originQuery={originQuery}
               destQuery={destQuery}
+              driverGenderFilter={driverGenderQuery}
               lang={lang}
               t={tWide}
             />

@@ -1,6 +1,14 @@
 import { getAdminFirestore } from '@/lib/firebase/firestore-admin';
 import { getCurrentUser } from '@/lib/auth/session';
-import type { CommunityType, TripWithDriver, UserProfile } from '@/lib/types';
+import type {
+  CommunityType,
+  TripMode,
+  TripPassengerGenderPreference,
+  TripRulePresetKey,
+  TripWithDriver,
+  UserProfile,
+  WeekdayIndex,
+} from '@/lib/types';
 import { trackEvent } from './analytics';
 import { createNotification } from './notification';
 import {
@@ -21,6 +29,21 @@ import {
 } from '@/lib/trips/lifecycle';
 import { getCompletedRideStats, getCompletedDriveCountForDriver } from './trust';
 import { getCommunityById } from './community';
+import {
+  MAX_DRIVER_NOTE_LENGTH,
+  MAX_TRIP_RULES_NOTE_LENGTH,
+  MAX_VEHICLE_COLOR_LENGTH,
+  MAX_VEHICLE_MAKE_MODEL_LENGTH,
+  sanitizeTripRulePresetKeys,
+} from '@/lib/trips/trust';
+import { normalizeTripPassengerGenderPreference } from '@/lib/trips/comfort';
+import {
+  getNextOccurrence,
+  isValidTimeString,
+  sanitizeWeekdays,
+  MIN_RECURRING_DAYS,
+  MAX_RECURRING_DAYS,
+} from '@/lib/trips/recurrence';
 
 function withEffectiveStatus<T extends { status: TripStatus; seats_available: number }>(trip: T): T {
   return {
@@ -92,10 +115,49 @@ export type CreateTripInput = {
   destinationLat: number;
   destinationLng: number;
   destinationName: string;
-  departureTime: string;
+  vehicleMakeModel: string;
+  vehicleColor?: string | null;
+  driverNote?: string | null;
+  tripRulePresetKeys?: TripRulePresetKey[];
+  tripRulesNote?: string | null;
+  passengerGenderPreference?: TripPassengerGenderPreference | null;
+  /**
+   * departure_time semantics:
+   * - one_time: caller provides exact ISO departure datetime.
+   * - recurring: not required; service computes next occurrence from recurringDays + recurringDepartureTime.
+   *   All existing lifecycle guards work unchanged against the computed value.
+   */
+  departureTime?: string;
   seatsTotal: number;
   priceCents?: number | null;
+  // --- Recurring fields (only used when tripMode === 'recurring') ------------
+  tripMode?: TripMode;
+  /** Weekday indices. 0=Sun...6=Sat. Required when tripMode==='recurring'. */
+  recurringDays?: WeekdayIndex[];
+  /** "HH:MM" 24h. Required when tripMode==='recurring'. */
+  recurringDepartureTime?: string;
 };
+
+function normalizeOptionalTripText(
+  value: string | null | undefined,
+  maxLength: number,
+  fieldLabel: string
+) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.length > maxLength) {
+    throw new AppError(`${fieldLabel} is too long`, 'BAD_REQUEST');
+  }
+
+  return normalized;
+}
 
 export async function createTrip(input: CreateTripInput) {
   const user = await getCurrentUser();
@@ -118,6 +180,47 @@ export async function createTrip(input: CreateTripInput) {
     throw new AppError('Origin and destination are required', 'BAD_REQUEST');
   }
 
+  const vehicleMakeModel = normalizeOptionalTripText(
+    input.vehicleMakeModel,
+    MAX_VEHICLE_MAKE_MODEL_LENGTH,
+    'Vehicle make and model'
+  );
+  if (!vehicleMakeModel) {
+    throw new AppError('Vehicle make and model are required', 'BAD_REQUEST');
+  }
+
+  const vehicleColor = normalizeOptionalTripText(
+    input.vehicleColor,
+    MAX_VEHICLE_COLOR_LENGTH,
+    'Vehicle color'
+  );
+  const driverNote = normalizeOptionalTripText(
+    input.driverNote,
+    MAX_DRIVER_NOTE_LENGTH,
+    'Driver note'
+  );
+  const tripRulesNote = normalizeOptionalTripText(
+    input.tripRulesNote,
+    MAX_TRIP_RULES_NOTE_LENGTH,
+    'Trip rules note'
+  );
+  const requestedRuleKeys = Array.isArray(input.tripRulePresetKeys)
+    ? input.tripRulePresetKeys
+    : [];
+  const tripRulePresetKeys = sanitizeTripRulePresetKeys(requestedRuleKeys);
+  if (tripRulePresetKeys.length !== requestedRuleKeys.length) {
+    throw new AppError('One or more trip rules are invalid', 'BAD_REQUEST');
+  }
+  const passengerGenderPreference = normalizeTripPassengerGenderPreference(
+    input.passengerGenderPreference
+  );
+  if (
+    input.passengerGenderPreference != null &&
+    passengerGenderPreference !== input.passengerGenderPreference
+  ) {
+    throw new AppError('Passenger gender preference is invalid', 'BAD_REQUEST');
+  }
+
   if (!Number.isInteger(input.seatsTotal) || input.seatsTotal < 1) {
     throw new AppError('Trips must offer at least 1 seat', 'BAD_REQUEST');
   }
@@ -126,11 +229,46 @@ export async function createTrip(input: CreateTripInput) {
     throw new AppError('Price must be a positive whole number of cents', 'BAD_REQUEST');
   }
 
-  const departureTime = new Date(input.departureTime);
-  if (Number.isNaN(departureTime.getTime())) {
-    throw new AppError('Departure time is invalid', 'BAD_REQUEST');
-  }
-  if (departureTime.getTime() <= Date.now()) {
+  const tripMode: TripMode = input.tripMode === 'recurring' ? 'recurring' : 'one_time';
+
+  // --- departure_time resolution ---------------------------------------------
+  // one_time:  caller provides exact ISO departure datetime.
+  // recurring: service computes next occurrence from recurringDays + recurringDepartureTime.
+  //            All lifecycle guards (30-min window, past-check) apply to the computed value.
+  const departureDate = (() => {
+    if (tripMode === 'recurring') {
+      const days = sanitizeWeekdays(input.recurringDays ?? []);
+      if (days.length < MIN_RECURRING_DAYS || days.length > MAX_RECURRING_DAYS) {
+        throw new AppError(
+          `Recurring trips must select between ${MIN_RECURRING_DAYS} and ${MAX_RECURRING_DAYS} weekdays`,
+          'BAD_REQUEST'
+        );
+      }
+      const rdt = input.recurringDepartureTime ?? '';
+      if (!isValidTimeString(rdt)) {
+        throw new AppError('Recurring departure time must be in HH:MM format', 'BAD_REQUEST');
+      }
+      const next = getNextOccurrence(days, rdt);
+      if (!next) {
+        throw new AppError(
+          'Could not compute a valid next occurrence — ensure selected days have a future time slot',
+          'BAD_REQUEST'
+        );
+      }
+      return next;
+    }
+    // one_time path — existing behaviour unchanged
+    if (!input.departureTime) {
+      throw new AppError('Departure time is required for one-time trips', 'BAD_REQUEST');
+    }
+    const dt = new Date(input.departureTime);
+    if (Number.isNaN(dt.getTime())) {
+      throw new AppError('Departure time is invalid', 'BAD_REQUEST');
+    }
+    return dt;
+  })();
+
+  if (departureDate.getTime() <= Date.now()) {
     throw new AppError('Departure time must be in the future', 'BAD_REQUEST');
   }
 
@@ -169,6 +307,8 @@ export async function createTrip(input: CreateTripInput) {
   }
 
   const now = new Date().toISOString();
+  const sanitizedRecurringDays = tripMode === 'recurring' ? sanitizeWeekdays(input.recurringDays ?? []) : undefined;
+
   const ref = await db.collection('trips').add({
     community_id: input.communityId,
     community_name: community.name,
@@ -180,12 +320,25 @@ export async function createTrip(input: CreateTripInput) {
     destination_lat: input.destinationLat,
     destination_lng: input.destinationLng,
     destination_name: input.destinationName,
-    departure_time: input.departureTime,
+    vehicle_make_model: vehicleMakeModel,
+    vehicle_color: vehicleColor,
+    driver_note: driverNote,
+    trip_rule_preset_keys: tripRulePresetKeys,
+    trip_rules_note: tripRulesNote,
+    passenger_gender_preference: passengerGenderPreference,
+    // departure_time: exact datetime (one_time) or next computed occurrence (recurring).
+    departure_time: departureDate.toISOString(),
     seats_total: input.seatsTotal,
     seats_available: input.seatsTotal,
     price_cents: input.priceCents ?? null,
     status: 'scheduled',
     created_at: now,
+    // Recurring metadata — only written when trip_mode === 'recurring'
+    ...(tripMode === 'recurring' && {
+      trip_mode: 'recurring',
+      recurring_days: sanitizedRecurringDays,
+      recurring_departure_time: input.recurringDepartureTime,
+    }),
   });
 
   const tripMembershipBatch = db.batch();
@@ -374,7 +527,7 @@ export async function updateTripStatus(tripId: string, status: TripStatus) {
     );
     try {
       const bookingsSnap = await db.collection('bookings').where('trip_id', '==', tripId).where('status', '==', 'confirmed').get();
-      const notifyPromises = bookingsSnap.docs.map(b => 
+      const notifyPromises = bookingsSnap.docs.map(b =>
          createNotification({
            userId: b.data().passenger_id as string,
            type: 'cancellation',

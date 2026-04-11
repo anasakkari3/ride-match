@@ -1,51 +1,66 @@
-import type { Lang } from '@/lib/i18n/dictionaries';
+export type BrandLang = 'en' | 'ar' | 'he';
 
 type BrandLogoAsset = {
   src: string;
   alt: string;
 };
 
-const BRAND_DISPLAY_NAMES: Record<Lang, string> = {
-  en: 'OnWay',
-  ar: 'بطريقك',
-  he: 'בדרכך',
+export const BRAND_NAME = 'بطريقك';
+
+const BRAND_LOGO: BrandLogoAsset = {
+  src: '/brand/logo-ar.png',
+  alt: 'شعار بطريقك',
 };
 
-const BRAND_LOGOS: Record<Lang, BrandLogoAsset> = {
-  en: {
-    src: '/brand/logo-onway.png',
-    alt: 'OnWay logo',
-  },
-  ar: {
-    src: '/brand/logo-ar.png',
-    alt: 'شعار بطريقك',
-  },
-  he: {
-    src: '/brand/logo-onway.png',
-    alt: 'לוגו OnWay',
-  },
-};
+const LEGACY_BRAND_NAMES = ['OnWay', 'Btriq', 'בדרכך', BRAND_NAME] as const;
 
-export function getBrandDisplayName(lang: Lang): string {
-  return BRAND_DISPLAY_NAMES[lang] ?? BRAND_DISPLAY_NAMES.en;
+export function getBrandDisplayName(lang: BrandLang): string {
+  void lang;
+  return BRAND_NAME;
 }
 
-export function getBrandLogoAsset(lang: Lang): BrandLogoAsset {
-  return BRAND_LOGOS[lang] ?? BRAND_LOGOS.en;
+export function getBrandLogoAsset(lang: BrandLang): BrandLogoAsset {
+  void lang;
+  return BRAND_LOGO;
 }
 
 export function getBrandMetaTitle(): string {
-  return 'OnWay | بطريقك';
+  return BRAND_NAME;
 }
 
-export function getBrandMetaDescription(lang: Lang): string {
+export function getBrandMetaDescription(lang: BrandLang): string {
   switch (lang) {
     case 'ar':
-      return 'تنسيق رحلات مجتمعي بسيط وآمن وفي الوقت المناسب.';
+      return 'بطريقك يساعد مجتمع الجامعة على تنسيق الرحلات بوضوح وثقة.';
     case 'he':
-      return 'תיאום נסיעות קהילתי פשוט, מסודר ואמין.';
+      return `${BRAND_NAME} עוזרת לקהילת האוניברסיטה לתאם נסיעות בבהירות ובאמון.`;
     case 'en':
     default:
-      return 'Simple, organized, community ride coordination.';
+      return `${BRAND_NAME} helps a university community coordinate rides with clarity and trust.`;
   }
+}
+
+export function brandText(input: string): string {
+  return LEGACY_BRAND_NAMES.reduce(
+    (value, legacyName) => value.split(legacyName).join(BRAND_NAME),
+    input
+  );
+}
+
+export function brandCopy<T>(input: T): T {
+  if (typeof input === 'string') {
+    return brandText(input) as T;
+  }
+
+  if (Array.isArray(input)) {
+    return input.map((item) => brandCopy(item)) as T;
+  }
+
+  if (input && typeof input === 'object') {
+    return Object.fromEntries(
+      Object.entries(input).map(([key, value]) => [key, brandCopy(value)])
+    ) as T;
+  }
+
+  return input;
 }

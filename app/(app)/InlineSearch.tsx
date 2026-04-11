@@ -8,6 +8,7 @@ type Props = {
   communityId?: string;
   initialOrigin?: string;
   initialDestination?: string;
+  initialDriverGenderFilter?: string;
   clearHref?: string;
   communitySelectionRequired?: boolean;
 };
@@ -16,16 +17,37 @@ const COPY = {
   en: {
     originAria: 'Search origin',
     destinationAria: 'Search destination',
+    driverGenderLabel: 'Driver gender',
+    driverGenderAria: 'Filter by driver gender',
+    driverGenderOptions: {
+      any: 'Any',
+      man: 'Man',
+      woman: 'Woman',
+    },
     communityRequired: 'Choose a community first. Search results stay inside one community at a time.',
   },
   ar: {
     originAria: 'ابحث عن نقطة الانطلاق',
     destinationAria: 'ابحث عن الوجهة',
+    driverGenderLabel: 'جنس السائق',
+    driverGenderAria: 'فلترة حسب جنس السائق',
+    driverGenderOptions: {
+      any: 'أي',
+      man: 'ذكر',
+      woman: 'أنثى',
+    },
     communityRequired: 'اختر مجتمعًا أولًا. نتائج البحث تبقى داخل مجتمع واحد في كل مرة.',
   },
   he: {
     originAria: 'חיפוש מוצא',
     destinationAria: 'חיפוש יעד',
+    driverGenderLabel: 'מגדר הנהג',
+    driverGenderAria: 'סינון לפי מגדר הנהג',
+    driverGenderOptions: {
+      any: 'הכול',
+      man: 'גבר',
+      woman: 'אישה',
+    },
     communityRequired: 'בחרו קודם קהילה. תוצאות החיפוש נשארות בתוך קהילה אחת בכל פעם.',
   },
 } as const;
@@ -34,6 +56,7 @@ export default function InlineSearch({
   communityId,
   initialOrigin = '',
   initialDestination = '',
+  initialDriverGenderFilter = 'any',
   clearHref = '/app',
   communitySelectionRequired = false,
 }: Props) {
@@ -42,8 +65,9 @@ export default function InlineSearch({
   const copy = COPY[lang];
   const [origin, setOrigin] = useState(initialOrigin);
   const [destination, setDestination] = useState(initialDestination);
+  const [driverGender, setDriverGender] = useState(initialDriverGenderFilter);
 
-  const hasActiveSearch = Boolean(origin.trim() || destination.trim());
+  const hasActiveSearch = Boolean(origin.trim() || destination.trim() || driverGender !== 'any');
   const needsCommunitySelection = communitySelectionRequired && !communityId;
   const canSubmit = (!needsCommunitySelection) && Boolean(origin.trim() || destination.trim());
 
@@ -57,12 +81,14 @@ export default function InlineSearch({
     if (communityId) params.append('community_id', communityId);
     if (normalizedOrigin) params.append('originName', normalizedOrigin);
     if (normalizedDestination) params.append('destinationName', normalizedDestination);
+    if (driverGender !== 'any') params.append('driverGender', driverGender);
     router.push(`/app?${params.toString()}`);
   };
 
   const handleClear = () => {
     setOrigin('');
     setDestination('');
+    setDriverGender('any');
     router.push(clearHref);
   };
 
@@ -96,6 +122,29 @@ export default function InlineSearch({
             placeholder={t('anywhere')}
             className="w-full bg-transparent px-3 pb-2 pt-0 text-[15px] font-medium text-slate-900 dark:text-slate-100 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none focus:ring-0"
           />
+        </div>
+
+        <div className="hidden sm:block w-px bg-slate-100 dark:bg-slate-800 my-2"></div>
+        <div className="sm:hidden h-px bg-slate-100 dark:bg-slate-800 mx-3"></div>
+
+        <div className="sm:w-[160px] flex flex-col relative">
+          <label
+            htmlFor="driver-gender-filter"
+            className="text-[10px] font-bold text-violet-600 dark:text-violet-400 uppercase tracking-widest px-3 pt-1"
+          >
+            {copy.driverGenderLabel}
+          </label>
+          <select
+            id="driver-gender-filter"
+            aria-label={copy.driverGenderAria}
+            value={driverGender}
+            onChange={(event) => setDriverGender(event.target.value)}
+            className="w-full bg-transparent px-3 pb-2 pt-0 text-[15px] font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-0"
+          >
+            <option value="any">{copy.driverGenderOptions.any}</option>
+            <option value="man">{copy.driverGenderOptions.man}</option>
+            <option value="woman">{copy.driverGenderOptions.woman}</option>
+          </select>
         </div>
 
         <div className="flex items-center gap-2 pl-2 sm:pl-0 sm:pr-1 pt-2 sm:pt-0">

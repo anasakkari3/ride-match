@@ -178,9 +178,20 @@ async function createSmokeUser(auth, db, input) {
 
   const now = new Date().toISOString();
   await db.collection('users').doc(userRecord.uid).set({
-    phone: null,
+    phone: input.phone ?? '+970599000000',
     display_name: input.displayName,
     avatar_url: null,
+    city_or_area: input.cityOrArea ?? 'Ramallah',
+    age: input.age ?? 22,
+    gender: input.gender ?? 'prefer_not_to_say',
+    is_driver: input.isDriver ?? false,
+    has_driver_license: input.hasDriverLicense ?? false,
+    gender_preference: input.genderPreference ?? 'same_as_me',
+    driver_license_status: 'provided_placeholder',
+    student_id_status: 'provided_placeholder',
+    avatar_status: 'not_provided',
+    phone_verified: false,
+    profile_completed_at: now,
     rating_avg: 0,
     rating_count: 0,
     created_at: now,
@@ -334,18 +345,24 @@ async function main() {
   const driver = await createSmokeUser(auth, db, {
     email: driverEmail,
     displayName: `Smoke Driver ${runId}`,
+    gender: 'man',
+    isDriver: true,
+    hasDriverLicense: true,
   });
   const rider = await createSmokeUser(auth, db, {
     email: riderEmail,
     displayName: `Smoke Rider ${runId}`,
+    gender: 'woman',
   });
   const admin = await createSmokeUser(auth, db, {
     email: adminEmail,
     displayName: `Smoke Admin ${runId}`,
+    gender: 'man',
   });
   const outsider = await createSmokeUser(auth, db, {
     email: outsiderEmail,
     displayName: `Smoke Outsider ${runId}`,
+    gender: 'man',
   });
 
   const openCommunity = {
@@ -518,6 +535,8 @@ async function main() {
       await pages.driver.locator('#origin').fill(`Smoke Origin ${runId}`);
       await pages.driver.locator('#destination').fill(`Smoke Destination ${runId}`);
       await pages.driver.locator('#departure').fill(formatDatetimeLocal(departure));
+      await pages.driver.locator('#vehicle-make-model').fill('Toyota Corolla');
+      await pages.driver.locator('#passenger-gender-preference').selectOption('women_only');
       await pages.driver.getByTestId('publish-trip-button').click();
       await pages.driver.waitForURL(
         (url) => url.pathname.startsWith('/trips/') && url.pathname !== '/trips/new',
@@ -550,6 +569,20 @@ async function main() {
       );
     });
 
+    await withStep(state, 'non-matching rider cannot book a women-only trip', async () => {
+      await pages.admin.goto(tripUrl, { waitUntil: 'domcontentloaded' });
+      await assert.doesNotReject(() =>
+        pages.admin
+          .getByTestId('passenger-preference-blocked')
+          .waitFor({ state: 'visible', timeout: 15000 })
+      );
+      assert.equal(
+        await pages.admin.getByTestId('start-booking-button').count(),
+        0,
+        'booking CTA should be hidden for a rider who does not match the trip preference'
+      );
+    });
+
     await withStep(state, 'rider books a seat on the trip', async () => {
       await pages.rider.goto(tripUrl, { waitUntil: 'domcontentloaded' });
       const bookingButton = pages.rider.getByTestId('start-booking-button');
@@ -562,9 +595,37 @@ async function main() {
       }
 
       await bookingButton.click();
+      await pages.rider.locator('#ack-trip-rules').check();
+      await pages.rider.locator('#ack-platform-role').check();
+      await pages.rider.locator('#ack-support-path').check();
       await pages.rider.getByTestId('confirm-booking-button').click();
       const bookingDoc = await waitForConfirmedBooking(db, tripId, rider.uid, 15000);
       assert.ok(bookingDoc, 'booking record was not created for the rider');
+    });
+
+    await withStep(state, 'rider cannot book the same trip twice', async () => {
+      await pages.rider.goto(tripUrl, { waitUntil: 'domcontentloaded' });
+      await assert.doesNotReject(() =>
+        pages.rider.getByTestId('existing-booking-card').waitFor({ state: 'visible', timeout: 15000 })
+      );
+      assert.equal(
+        await pages.rider.getByTestId('start-booking-button').count(),
+        0,
+        'booking CTA should be hidden once the rider already has a seat'
+      );
+
+      const confirmedBookingsSnap = await db
+        .collection('bookings')
+        .where('trip_id', '==', tripId)
+        .where('passenger_id', '==', rider.uid)
+        .where('status', '==', 'confirmed')
+        .get();
+
+      assert.equal(
+        confirmedBookingsSnap.size,
+        1,
+        'there should only be one confirmed booking record for a rider on a trip'
+      );
     });
 
     await withStep(state, 'booked rider can open chat and send a message', async () => {
@@ -630,10 +691,7 @@ async function main() {
       await pages.rider.getByTestId('start-cancel-booking-button').click();
       const confirmSelector = '[data-testid="confirm-cancel-booking-button"]';
       await pages.rider.waitForSelector(confirmSelector, { state: 'visible', timeout: 15000 });
-      await pages.rider.waitForTimeout(250);
-      await pages.rider.locator(confirmSelector).evaluate((node) => {
-        node.click();
-      });
+      await pages.rider.locator(confirmSelector).click({ force: true });
 
       const cancelledBookingDoc = await waitForCancelledBooking(db, tripId, rider.uid, 15000);
       assert.ok(cancelledBookingDoc, 'booking record was not marked cancelled for the rider');

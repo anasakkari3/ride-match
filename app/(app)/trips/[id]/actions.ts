@@ -14,8 +14,16 @@ import {
   validateTripReportParticipants,
 } from '@/lib/services/safety';
 
-export async function bookSeat(tripId: string, seats: number = 1) {
-  return bookSeatService(tripId, seats);
+export async function bookSeat(
+  tripId: string,
+  seats: number = 1,
+  acknowledgements?: {
+    tripRules: boolean;
+    platformRole: boolean;
+    supportPath: boolean;
+  }
+) {
+  return bookSeatService(tripId, seats, acknowledgements);
 }
 
 export async function cancelBookingAction(bookingId: string) {

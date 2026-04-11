@@ -1,13 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import { BRAND_NAME, brandCopy } from '@/lib/brand/config';
 import { useTranslation } from '@/lib/i18n/LanguageProvider';
 import { getFirebaseFirestore } from '@/lib/firebase/config';
-import type { BookingWithPassenger, TripWithDriver } from '@/lib/types';
+import type {
+  BookingWithPassenger,
+  TripPassengerGenderPreference,
+  TripRulePresetKey,
+  TripWithDriver,
+  UsersRow,
+} from '@/lib/types';
 import type { Lang } from '@/lib/i18n/dictionaries';
+import { sanitizeTripRulePresetKeys } from '@/lib/trips/trust';
+import { isRecurringTrip, formatRecurringSummary } from '@/lib/trips/recurrence';
+import {
+  doesPassengerGenderMatchPreference,
+  normalizeTripPassengerGenderPreference,
+} from '@/lib/trips/comfort';
 import {
   formatLocalizedDate,
   formatLocalizedDateTime,
@@ -33,6 +46,7 @@ type Props = {
   trip: TripWithDriver;
   bookings: BookingWithPassenger[];
   currentUserId: string | null;
+  currentUserGender: UsersRow['gender'] | null;
   communicationAccess: {
     canView: boolean;
     canSendMessages: boolean;
@@ -82,6 +96,155 @@ const SURFACE_COPY = {
     passengerListHint: 'נוסעים מאושרים וביטולים יופיעו כאן ככל שהנסיעה תשתנה.',
     rosterEmptyTitle: 'עדיין אין נוסעים',
     rosterEmptyDesc: 'הנסיעה כבר פעילה בקהילה. מושבים יופיעו כאן ברגע שמישהו יזמין.',
+  },
+} as const;
+
+const RECURRING_COPY = {
+  en: { badge: 'Recurring', schedule: 'Schedule' },
+  ar: { badge: 'متكررة', schedule: 'الجدول' },
+  he: { badge: 'קבועה', schedule: 'לוח זמנים' },
+} as const;
+
+const TRUST_COPY = {
+  en: {
+    rideDetails: 'Ride details',
+    rideDetailsDesc: 'These details help riders understand what to expect before they join.',
+    driverGender: 'Driver gender',
+    passengerPreference: 'Passenger preference',
+    vehicle: 'Vehicle',
+    driverNote: 'Driver note',
+    tripRules: 'Trip rules',
+    additionalNote: 'Additional note',
+    noSpecialRules: 'No special ride rules were added for this trip.',
+    bookingPreferenceGateTitle: 'This trip has a rider preference',
+    bookingPreferenceGateDesc: (label: string) =>
+      `You can view the trip details, but booking follows the driver's selected preference: ${label}.`,
+    howCoordinationWorks: 'How coordination works',
+    coordinationDescription:
+      `${BRAND_NAME} helps people coordinate shared rides between users. The direct trip details, timing, meeting point, and ride conduct stay with the people taking part in it.`,
+    supportDescription:
+      'If something goes wrong, you can report it from inside the platform so the admins or support team can review it.',
+    pricingDescription:
+      'Any listed price is shown per seat. If there is a disagreement later, it can be escalated through the in-app report path.',
+    bookingChecklist: 'Before you confirm',
+    bookingChecklistDesc:
+      'Take a quick look at the ride details, then confirm the acknowledgements below.',
+    ackTripRules:
+      'I read the ride details, driver notes, and any trip rules shown for this ride.',
+    ackPlatformRole:
+      `I understand that ${BRAND_NAME} helps coordinate the ride between users and is not the direct operator of the trip itself.`,
+    ackSupportPath:
+      'If a problem comes up, I can use the in-app report path so the admins or support team can review it.',
+    driverGenderOptions: {
+      man: 'Man',
+      woman: 'Woman',
+    },
+    passengerPreferenceOptions: {
+      any: 'Any riders',
+      men_only: 'Men only',
+      women_only: 'Women only',
+    } satisfies Record<TripPassengerGenderPreference, string>,
+    ruleOptions: {
+      no_delay: 'Please do not be late',
+      wait_5_minutes: 'I wait up to 5 minutes',
+      no_smoking: 'No smoking',
+      prefer_quiet: 'Quiet ride preferred',
+      fixed_meeting_point: 'Meeting point is fixed',
+      confirm_attendance: 'Please confirm before departure',
+    } satisfies Record<TripRulePresetKey, string>,
+  },
+  ar: {
+    rideDetails: 'تفاصيل الرحلة',
+    rideDetailsDesc: 'هذه التفاصيل تساعد الراكب يفهم ماذا يتوقع قبل الانضمام.',
+    driverGender: 'جنس السائق',
+    passengerPreference: 'تفضيل الركاب',
+    vehicle: 'السيارة',
+    driverNote: 'ملاحظة السائق',
+    tripRules: 'قواعد الرحلة',
+    additionalNote: 'ملاحظة إضافية',
+    noSpecialRules: 'لا توجد قواعد خاصة مضافة لهذه الرحلة.',
+    bookingPreferenceGateTitle: 'هذه الرحلة لها تفضيل للركاب',
+    bookingPreferenceGateDesc: (label: string) =>
+      `يمكنك مشاهدة تفاصيل الرحلة، لكن الحجز يلتزم بالتفضيل الذي حدده السائق: ${label}.`,
+    howCoordinationWorks: 'كيف يتم التنسيق',
+    coordinationDescription:
+      `${BRAND_NAME} يساعد المستخدمين على تنسيق الرحلات المشتركة بينهم. تفاصيل الرحلة نفسها والتوقيت ونقطة اللقاء وطريقة التنقل تبقى بين أطراف الرحلة.`,
+    supportDescription:
+      'إذا حصلت مشكلة، يمكنك رفع بلاغ من داخل المنصة حتى تتمكن الإدارة أو فريق الدعم من مراجعتها.',
+    pricingDescription:
+      'أي سعر ظاهر هنا يكون لكل مقعد. وإذا حصل خلاف لاحقًا، يمكن تصعيده من خلال البلاغ داخل التطبيق.',
+    bookingChecklist: 'قبل تأكيد الحجز',
+    bookingChecklistDesc:
+      'راجع تفاصيل الرحلة بسرعة، ثم أكّد الإقرارات التالية قبل إتمام الحجز.',
+    ackTripRules: 'أقر أنني قرأت تفاصيل الرحلة وملاحظات السائق وأي قواعد ظاهرة لهذه الرحلة.',
+    ackPlatformRole:
+      `أفهم أن ${BRAND_NAME} يسهّل تنسيق الرحلة بين المستخدمين، وليس الجهة المشغلة المباشرة للرحلة نفسها.`,
+    ackSupportPath:
+      'إذا حصلت مشكلة، يمكنني استخدام مسار البلاغ داخل المنصة حتى تتمكن الإدارة أو الدعم من المراجعة.',
+    driverGenderOptions: {
+      man: 'ذكر',
+      woman: 'أنثى',
+    },
+    passengerPreferenceOptions: {
+      any: 'أي راكب',
+      men_only: 'ذكور فقط',
+      women_only: 'إناث فقط',
+    } satisfies Record<TripPassengerGenderPreference, string>,
+    ruleOptions: {
+      no_delay: 'الرجاء عدم التأخير',
+      wait_5_minutes: 'أنتظر 5 دقائق كحد أقصى',
+      no_smoking: 'ممنوع التدخين',
+      prefer_quiet: 'يفضّل الهدوء',
+      fixed_meeting_point: 'نقطة اللقاء ثابتة',
+      confirm_attendance: 'الرجاء تأكيد الحضور',
+    } satisfies Record<TripRulePresetKey, string>,
+  },
+  he: {
+    rideDetails: 'פרטי הנסיעה',
+    rideDetailsDesc: 'הפרטים האלה עוזרים לנוסעים להבין למה לצפות לפני ההצטרפות.',
+    driverGender: 'מגדר הנהג',
+    passengerPreference: 'העדפת נוסעים',
+    vehicle: 'רכב',
+    driverNote: 'הערת הנהג',
+    tripRules: 'כללי הנסיעה',
+    additionalNote: 'הערה נוספת',
+    noSpecialRules: 'לא נוספו כללים מיוחדים לנסיעה הזו.',
+    bookingPreferenceGateTitle: 'לנסיעה הזו יש העדפת נוסעים',
+    bookingPreferenceGateDesc: (label: string) =>
+      `אפשר לראות את פרטי הנסיעה, אבל ההזמנה מכבדת את ההעדפה שהנהג בחר: ${label}.`,
+    howCoordinationWorks: 'איך התיאום עובד',
+    coordinationDescription:
+      `${BRAND_NAME} עוזרת למשתמשים לתאם נסיעות משותפות ביניהם. פרטי הנסיעה עצמה, התזמון, נקודת המפגש ואופי הנסיעה נשארים בין משתתפי הנסיעה.`,
+    supportDescription:
+      'אם מתעוררת בעיה, אפשר לדווח מתוך הפלטפורמה כדי שהמנהלים או צוות התמיכה יוכלו לבדוק אותה.',
+    pricingDescription:
+      'כל מחיר שמופיע כאן הוא למושב. אם יש מחלוקת אחר כך, אפשר להסלים אותה דרך מסלול הדיווח בתוך האפליקציה.',
+    bookingChecklist: 'לפני האישור',
+    bookingChecklistDesc:
+      'עברו בקצרה על פרטי הנסיעה ואז אשרו את ההצהרות הבאות לפני ההזמנה.',
+    ackTripRules:
+      'אני מאשר/ת שקראתי את פרטי הנסיעה, הערות הנהג וכללי הנסיעה שמופיעים כאן.',
+    ackPlatformRole:
+      `אני מבין/ה ש-${BRAND_NAME} מסייעת בתיאום בין משתמשים ואינה המפעילה הישירה של הנסיעה עצמה.`,
+    ackSupportPath:
+      'אם תתעורר בעיה, אוכל להשתמש במסלול הדיווח בתוך האפליקציה כדי שהמנהלים או התמיכה יבדקו אותה.',
+    driverGenderOptions: {
+      man: 'גבר',
+      woman: 'אישה',
+    },
+    passengerPreferenceOptions: {
+      any: 'כל נוסע',
+      men_only: 'גברים בלבד',
+      women_only: 'נשים בלבד',
+    } satisfies Record<TripPassengerGenderPreference, string>,
+    ruleOptions: {
+      no_delay: 'בבקשה לא לאחר',
+      wait_5_minutes: 'אני מחכה עד 5 דקות',
+      no_smoking: 'אין לעשן',
+      prefer_quiet: 'עדיפה נסיעה שקטה',
+      fixed_meeting_point: 'נקודת המפגש קבועה',
+      confirm_attendance: 'נא לאשר הגעה לפני היציאה',
+    } satisfies Record<TripRulePresetKey, string>,
   },
 } as const;
 
@@ -154,9 +317,20 @@ function passengerFromBookingSnapshot(booking: BookingWithPassenger) {
     id: booking.passenger_id,
     display_name: displayName,
     avatar_url: avatarUrl,
+    gender: null,
     rating_avg: 0,
     rating_count: 0,
   };
+}
+
+function getAsyncErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getAsyncErrorCode(error: unknown) {
+  return error && typeof error === 'object' && 'code' in error
+    ? String((error as { code?: unknown }).code)
+    : undefined;
 }
 
 function getParticipantInitial(name: string | null | undefined, fallback: string) {
@@ -168,12 +342,14 @@ export default function TripDetailClient({
   trip: initialTrip,
   bookings: initialBookings,
   currentUserId,
+  currentUserGender,
   communicationAccess,
   wasJustCreated = false,
 }: Props) {
   const { t, lang } = useTranslation();
   const copy = DETAIL_COPY[lang] ?? DETAIL_COPY.en;
   const surfaceCopy = SURFACE_COPY[lang] ?? SURFACE_COPY.en;
+  const trustCopy = brandCopy(TRUST_COPY[lang] ?? TRUST_COPY.en);
   const [trip, setTrip] = useState(initialTrip);
   const [bookings, setBookings] = useState(initialBookings);
   const [loading, setLoading] = useState(false);
@@ -183,34 +359,61 @@ export default function TripDetailClient({
   const [showBookConfirm, setShowBookConfirm] = useState(false);
   const [showCancelTripConfirm, setShowCancelTripConfirm] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [bookingAcks, setBookingAcks] = useState({
+    tripRules: false,
+    platformRole: false,
+    supportPath: false,
+  });
   const [shouldWatchBookings, setShouldWatchBookings] = useState(
     currentUserId === initialTrip.driver_id ||
       initialBookings.some(
         (booking) => booking.passenger_id === currentUserId && booking.status === 'confirmed'
       )
   );
+  // Same defensive pattern as ChatRoom: only let a permission-denied error
+  // tear down the listener if we have already received at least one good
+  // snapshot. A first-fire permission-denied is almost always a transient
+  // auth-state race or a brief reconnect, and clearing the roster on it would
+  // mirror the chat-redirect bug — silently wiping legitimate data the
+  // server already authorized us to see.
+  const hasObservedBookingsRef = useRef(false);
 
   useEffect(() => {
+    let isMounted = true;
+    let isRefreshing = false;
     const db = getFirebaseFirestore();
     const tripRef = doc(db, 'trips', initialTrip.id);
-    const unsubscribe = onSnapshot(
-      tripRef,
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          setTrip((prev) => ({ ...prev, ...data, id: snapshot.id }));
-        }
-      },
-      (snapshotError) => {
-        console.warn('Trip subscription error:', snapshotError.message);
-      }
-    );
 
-    return () => unsubscribe();
+    const refreshTrip = async () => {
+      if (isRefreshing) return;
+      isRefreshing = true;
+      try {
+        const snapshot = await getDoc(tripRef);
+        if (!isMounted || !snapshot.exists()) return;
+
+        const data = snapshot.data();
+        setTrip((prev) => ({ ...prev, ...data, id: snapshot.id }));
+      } catch (refreshError) {
+        console.warn('Trip refresh error:', getAsyncErrorMessage(refreshError));
+      } finally {
+        isRefreshing = false;
+      }
+    };
+
+    void refreshTrip();
+    const refreshInterval = window.setInterval(refreshTrip, 5000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(refreshInterval);
+    };
   }, [initialTrip.id]);
 
   useEffect(() => {
     if (!shouldWatchBookings) return;
+    hasObservedBookingsRef.current = false;
+    let isMounted = true;
+    let isRefreshing = false;
 
     const db = getFirebaseFirestore();
     const bookingsQuery = query(
@@ -222,9 +425,14 @@ export default function TripDetailClient({
       initialBookings.map((booking) => [booking.id, booking.passenger ?? null])
     );
 
-    const unsubscribe = onSnapshot(
-      bookingsQuery,
-      (snapshot) => {
+    const refreshBookings = async () => {
+      if (isRefreshing) return;
+      isRefreshing = true;
+      try {
+        const snapshot = await getDocs(bookingsQuery);
+        if (!isMounted) return;
+
+        hasObservedBookingsRef.current = true;
         const nextBookings = snapshot.docs
           .map((bookingDoc) => {
             const data = bookingDoc.data() as BookingWithPassenger;
@@ -256,18 +464,30 @@ export default function TripDetailClient({
               passengerFromBookingSnapshot(booking),
           }));
         });
-      },
-      (snapshotError) => {
-        if (snapshotError.code === 'permission-denied') {
-          setBookings([]);
-          setShouldWatchBookings(false);
+      } catch (refreshError) {
+        if (getAsyncErrorCode(refreshError) === 'permission-denied') {
+          // Only treat permission-denied as a real loss of access if we
+          // previously saw at least one snapshot - otherwise it's an
+          // initial-load race and we should keep the server-rendered roster.
+          if (hasObservedBookingsRef.current) {
+            setBookings([]);
+            setShouldWatchBookings(false);
+          }
           return;
         }
-        console.warn('Booking subscription error:', snapshotError.message);
+        console.warn('Booking refresh error:', getAsyncErrorMessage(refreshError));
+      } finally {
+        isRefreshing = false;
       }
-    );
+    };
 
-    return () => unsubscribe();
+    void refreshBookings();
+    const refreshInterval = window.setInterval(refreshBookings, 5000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(refreshInterval);
+    };
   }, [initialBookings, initialTrip.id, shouldWatchBookings]);
 
   const effectiveStatus = getEffectiveTripStatus(trip);
@@ -288,16 +508,60 @@ export default function TripDetailClient({
   const isCancelled = effectiveStatus === 'cancelled';
   const isActiveTrip = isScheduled || isFull || isInProgress;
   const { date, time, isPast, isSoon } = formatDeparture(trip.departure_time, lang, t);
-  const canBook = !isDriver && isScheduled && !hasBooked && !isPast;
-  const canViewTripUpdates = !hasCancelled && (communicationAccess.canView || isDriver || hasBooked);
+  const passengerPreference = normalizeTripPassengerGenderPreference(
+    trip.passenger_gender_preference
+  );
+  const passengerPreferenceLabel =
+    trustCopy.passengerPreferenceOptions[passengerPreference];
+  const driverGenderLabel =
+    trip.driver?.gender === 'man'
+      ? trustCopy.driverGenderOptions.man
+      : trip.driver?.gender === 'woman'
+        ? trustCopy.driverGenderOptions.woman
+        : null;
+  const passengerPreferenceBlocksCurrentUser =
+    passengerPreference !== 'any' &&
+    !doesPassengerGenderMatchPreference(currentUserGender, passengerPreference);
+  const canBook =
+    !isDriver &&
+    isScheduled &&
+    !hasBooked &&
+    !isPast &&
+    !passengerPreferenceBlocksCurrentUser;
+  const canViewTripUpdates =
+    !hasCancelled && (communicationAccess.canView || isDriver || hasBooked);
   const isCommunicationRestricted = communicationAccess.isRestricted && canViewTripUpdates;
   const canSendTripMessages =
     canViewTripUpdates &&
     isActiveTrip &&
     !isCommunicationRestricted &&
     (isDriver || hasBooked);
+  const showPassengerPreferenceGate =
+    !isDriver &&
+    !hasBooked &&
+    !isPast &&
+    isScheduled &&
+    passengerPreferenceBlocksCurrentUser;
   const priceLabel = formatPerSeatPrice(trip.price_cents, t, copy.perSeatSuffix);
   const priceValueLabel = formatPriceLabel(trip.price_cents, t);
+  const tripRuleKeys = sanitizeTripRulePresetKeys(trip.trip_rule_preset_keys ?? []);
+  const vehicleDetails =
+    [trip.vehicle_make_model?.trim(), trip.vehicle_color?.trim()].filter(Boolean).join(' · ') || null;
+  const driverNote = trip.driver_note?.trim() || null;
+  const additionalRideNote = trip.trip_rules_note?.trim() || null;
+
+  // --- Recurring detection (defensive: falls back gracefully for old trips) --
+  const isRecurring = isRecurringTrip({
+    trip_mode: trip.trip_mode,
+    recurring_days: trip.recurring_days,
+    recurring_departure_time: trip.recurring_departure_time,
+  });
+  const recurringSummary = isRecurring
+    ? formatRecurringSummary(trip.recurring_days, trip.recurring_departure_time, lang)
+    : null;
+  const recurringCopy = RECURRING_COPY[lang] ?? RECURRING_COPY.en;
+  const bookingAcksComplete =
+    bookingAcks.tripRules && bookingAcks.platformRole && bookingAcks.supportPath;
   const canCancelTrip = canDisplayDriverCancelAction({
     trip: {
       status: trip.status,
@@ -316,13 +580,21 @@ export default function TripDetailClient({
     draft: { label: t('draft'), color: 'bg-slate-500' },
   }[effectiveStatus];
 
+  const resetBookingAcks = () => {
+    setBookingAcks({
+      tripRules: false,
+      platformRole: false,
+      supportPath: false,
+    });
+  };
+
   const handleBook = async () => {
     setLoading(true);
     setError(null);
     setNotice(null);
 
     try {
-      const result = await bookSeat(trip.id, 1);
+      const result = await bookSeat(trip.id, 1, bookingAcks);
       setTrip((prev) => ({
         ...prev,
         seats_available: result.seats_available,
@@ -332,6 +604,7 @@ export default function TripDetailClient({
       setShouldWatchBookings(true);
 
       setShowBookConfirm(false);
+      resetBookingAcks();
       setNotice(copy.bookingReservedNotice);
     } catch (bookingError) {
       setError(
@@ -451,6 +724,19 @@ export default function TripDetailClient({
                   {copy.departingSoon}
                 </p>
               )}
+              {/* Recurring badge — shown below time/date, only when trip is recurring */}
+              {isRecurring && (
+                <div className="mt-2 inline-flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/30 border border-violet-200 dark:border-violet-800/50 px-3 py-1 text-xs font-bold text-violet-700 dark:text-violet-300">
+                    ↻ {recurringCopy.badge}
+                  </span>
+                  {recurringSummary && (
+                    <span className="text-xs font-medium text-violet-600 dark:text-violet-400">
+                      {recurringSummary}
+                    </span>
+                  )}
+                </div>
+              )}
               {trip.community_type === 'public' && (
                 <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mt-2">
                   {copy.publicTrustNote}
@@ -559,6 +845,135 @@ export default function TripDetailClient({
         </div>
       </div>
 
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 space-y-3">
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+              {trustCopy.rideDetails}
+            </p>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              {trustCopy.rideDetailsDesc}
+            </p>
+          </div>
+
+          {driverGenderLabel && (
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                {trustCopy.driverGender}
+              </p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {driverGenderLabel}
+              </p>
+            </div>
+          )}
+
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+              {trustCopy.passengerPreference}
+            </p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              {passengerPreferenceLabel}
+            </p>
+          </div>
+
+          {vehicleDetails && (
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                {trustCopy.vehicle}
+              </p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100" dir="auto">
+                {vehicleDetails}
+              </p>
+            </div>
+          )}
+
+          {/* Recurring schedule row — only shown for recurring trips */}
+          {isRecurring && recurringSummary && (
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                {recurringCopy.schedule}
+              </p>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/50 px-3 py-1.5 text-sm font-semibold text-violet-700 dark:text-violet-300">
+                ↻ {recurringSummary}
+              </span>
+            </div>
+          )}
+
+          {driverNote && (
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                {trustCopy.driverNote}
+              </p>
+              <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed" dir="auto">
+                {driverNote}
+              </p>
+            </div>
+          )}
+
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+              {trustCopy.tripRules}
+            </p>
+            {tripRuleKeys.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {tripRuleKeys.map((ruleKey) => (
+                  <span
+                    key={ruleKey}
+                    className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-medium text-slate-700 dark:text-slate-200"
+                  >
+                    {trustCopy.ruleOptions[ruleKey]}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                {trustCopy.noSpecialRules}
+              </p>
+            )}
+          </div>
+
+          {additionalRideNote && (
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                {trustCopy.additionalNote}
+              </p>
+              <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed" dir="auto">
+                {additionalRideNote}
+              </p>
+            </div>
+          )}
+      </div>
+
+      {showPassengerPreferenceGate && (
+        <div
+          data-testid="passenger-preference-blocked"
+          className="rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-2"
+        >
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+            {trustCopy.bookingPreferenceGateTitle}
+          </p>
+          <p className="text-sm text-amber-800 dark:text-amber-300 leading-relaxed">
+            {trustCopy.bookingPreferenceGateDesc(passengerPreferenceLabel)}
+          </p>
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 p-4 space-y-2">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+          {trustCopy.howCoordinationWorks}
+        </p>
+        <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+          {trustCopy.coordinationDescription}
+        </p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+          {trustCopy.supportDescription}
+        </p>
+        {trip.price_cents != null && (
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            {trustCopy.pricingDescription}
+          </p>
+        )}
+      </div>
+
       <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 p-4">
         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
           {copy.whatSignalsMean}
@@ -587,6 +1002,23 @@ export default function TripDetailClient({
           </p>
           <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
             {copy.communicationLimitedDescription}
+          </p>
+        </div>
+      )}
+
+      {!isDriver && hasBooked && (
+        <div
+          data-testid="existing-booking-card"
+          className="rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-4 space-y-2"
+        >
+          <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-300 uppercase tracking-widest">
+            {copy.availableNow}
+          </p>
+          <p className="text-base font-bold text-emerald-900 dark:text-emerald-100">
+            {copy.bookedStateTitle}
+          </p>
+          <p className="text-sm text-emerald-800/90 dark:text-emerald-200 leading-relaxed">
+            {copy.bookedStateDescription}
           </p>
         </div>
       )}
@@ -625,7 +1057,10 @@ export default function TripDetailClient({
               </div>
             )}
             <button
-              onClick={() => setShowBookConfirm(true)}
+              onClick={() => {
+                resetBookingAcks();
+                setShowBookConfirm(true);
+              }}
               data-testid="start-booking-button"
               className="w-full rounded-2xl bg-sky-600 dark:bg-sky-500 px-4 py-4 text-base font-bold text-white hover:bg-sky-700 dark:hover:bg-sky-600 transition-colors btn-press shadow-md"
             >
@@ -641,17 +1076,157 @@ export default function TripDetailClient({
                 {priceLabel ? ` | ${priceLabel}` : ''}
               </p>
             </div>
+            {(driverGenderLabel ||
+              passengerPreference !== 'any' ||
+              vehicleDetails ||
+              driverNote ||
+              tripRuleKeys.length > 0 ||
+              additionalRideNote) && (
+              <div className="rounded-2xl border border-sky-100 dark:border-sky-800/70 bg-white/80 dark:bg-slate-900/70 p-4 space-y-3">
+                {driverGenderLabel && (
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                      {trustCopy.driverGender}
+                    </p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      {driverGenderLabel}
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                    {trustCopy.passengerPreference}
+                  </p>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {passengerPreferenceLabel}
+                  </p>
+                </div>
+
+                {vehicleDetails && (
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                      {trustCopy.vehicle}
+                    </p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100" dir="auto">
+                      {vehicleDetails}
+                    </p>
+                  </div>
+                )}
+
+                {driverNote && (
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                      {trustCopy.driverNote}
+                    </p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed" dir="auto">
+                      {driverNote}
+                    </p>
+                  </div>
+                )}
+
+                {tripRuleKeys.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                      {trustCopy.tripRules}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {tripRuleKeys.map((ruleKey) => (
+                        <span
+                          key={ruleKey}
+                          className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-medium text-slate-700 dark:text-slate-200"
+                        >
+                          {trustCopy.ruleOptions[ruleKey]}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {additionalRideNote && (
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                      {trustCopy.additionalNote}
+                    </p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed" dir="auto">
+                      {additionalRideNote}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="rounded-2xl border border-sky-100 dark:border-sky-800/70 bg-white/80 dark:bg-slate-900/70 p-4 space-y-3">
+              <div>
+                <p className="text-[10px] font-bold text-sky-500 uppercase tracking-widest mb-1">
+                  {trustCopy.bookingChecklist}
+                </p>
+                <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                  {trustCopy.bookingChecklistDesc}
+                </p>
+              </div>
+
+              <label className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <input
+                  id="ack-trip-rules"
+                  type="checkbox"
+                  checked={bookingAcks.tripRules}
+                  onChange={(event) =>
+                    setBookingAcks((prev) => ({
+                      ...prev,
+                      tripRules: event.target.checked,
+                    }))
+                  }
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-slate-600 dark:bg-slate-800"
+                />
+                <span>{trustCopy.ackTripRules}</span>
+              </label>
+
+              <label className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <input
+                  id="ack-platform-role"
+                  type="checkbox"
+                  checked={bookingAcks.platformRole}
+                  onChange={(event) =>
+                    setBookingAcks((prev) => ({
+                      ...prev,
+                      platformRole: event.target.checked,
+                    }))
+                  }
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-slate-600 dark:bg-slate-800"
+                />
+                <span>{trustCopy.ackPlatformRole}</span>
+              </label>
+
+              <label className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+                <input
+                  id="ack-support-path"
+                  type="checkbox"
+                  checked={bookingAcks.supportPath}
+                  onChange={(event) =>
+                    setBookingAcks((prev) => ({
+                      ...prev,
+                      supportPath: event.target.checked,
+                    }))
+                  }
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-slate-600 dark:bg-slate-800"
+                />
+                <span>{trustCopy.ackSupportPath}</span>
+              </label>
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={handleBook}
-                disabled={loading}
+                disabled={loading || !bookingAcksComplete}
                 data-testid="confirm-booking-button"
-                className="flex-1 rounded-xl bg-sky-600 dark:bg-sky-500 px-4 py-3 font-bold text-white hover:bg-sky-700 dark:hover:bg-sky-600 disabled:opacity-50 transition-colors"
+                className="flex-1 rounded-xl bg-sky-600 dark:bg-sky-500 px-4 py-3 font-bold text-white hover:bg-sky-700 dark:hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? t('booking') : copy.confirmBooking}
               </button>
               <button
-                onClick={() => setShowBookConfirm(false)}
+                onClick={() => {
+                  resetBookingAcks();
+                  setShowBookConfirm(false);
+                }}
                 className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
               >
                 {t('cancel')}

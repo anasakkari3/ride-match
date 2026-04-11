@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, doc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, orderBy, query, where } from 'firebase/firestore';
 import EmptyStateCard from '@/components/EmptyStateCard';
 import { useTranslation } from '@/lib/i18n/LanguageProvider';
 import type { MessageWithSender } from '@/lib/types';
@@ -46,8 +46,8 @@ const COPY = {
     chatClosed: 'تم إغلاق الدردشة لهذه الرحلة',
     messagingUnavailable: 'الرسائل الحرة غير متاحة لهذه الرحلة',
     you: 'أنت',
-    sendFailed: 'تعذر إرسال هذه الرسالة الآن.',
-    emptyTitle: 'لا توجد رسائل للرحلة بعد',
+    sendFailed: 'لم نتمكن من إرسال الرسالة. حاول مرة أخرى.',
+    emptyTitle: 'لا توجد رسائل حتى الآن.',
     emptyDescription:
       'ستظهر أول رسالة أو تحديث الالتقاء أو إشعار الإلغاء هنا بمجرد إرسالها.',
     emptyRestrictedDescription:
@@ -86,6 +86,10 @@ function hydrateMessage(raw: Record<string, unknown>): MessageWithSender {
   };
 }
 
+function getAsyncErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export default function ChatRoom({
   tripId,
   initialMessages,
@@ -103,7 +107,22 @@ export default function ChatRoom({
   const [sendError, setSendError] = useState<string | null>(null);
   const [reportTarget, setReportTarget] = useState<{ id: string; name: string } | null>(null);
 
+  // The server already authorized this user before rendering this page
+  // (see chat/page.tsx → getTripCommunicationAccess). The client listeners
+  // below are only allowed to react to *explicit revocation* events while
+  // the user is sitting in the chat — they must NEVER eject the user based
+  // on initial absence, transient permission errors, or auth-state races.
+  // The previous implementation redirected on `!exists()` and on every
+  // `permission-denied`, which caused users to be kicked out 2-3 seconds
+  // after entering chat (race with Firebase Auth client init / legacy trips
+  // missing a backfilled membership doc).
+  const hasObservedMembershipRef = useRef(false);
+
   useEffect(() => {
+    hasObservedMembershipRef.current = false;
+    let isMounted = true;
+    let isRefreshingMessages = false;
+    let isRefreshingMembership = false;
     const db = getFirebaseFirestore();
     const messagesQuery = query(
       collection(db, 'messages'),
@@ -112,9 +131,13 @@ export default function ChatRoom({
     );
     const membershipRef = doc(db, 'trip_memberships', getTripMembershipDocId(tripId, currentUserId));
 
-    const unsubscribeMessages = onSnapshot(
-      messagesQuery,
-      (snapshot) => {
+    const refreshMessages = async () => {
+      if (isRefreshingMessages) return;
+      isRefreshingMessages = true;
+      try {
+        const snapshot = await getDocs(messagesQuery);
+        if (!isMounted) return;
+
         setMessages(
           snapshot.docs.map((messageDoc) =>
             hydrateMessage({
@@ -123,42 +146,60 @@ export default function ChatRoom({
             } as Record<string, unknown>)
           )
         );
-      },
-      (snapshotError) => {
-        if (snapshotError.code === 'permission-denied') {
-          router.replace('/messages');
-          return;
-        }
-        console.warn('Chat subscription failed:', snapshotError.message);
+      } catch (refreshError) {
+        // Server already validated read access. Don't redirect on transient
+        // refresh errors - they're often auth-state races or short-lived
+        // network/permission blips that recover on the next reconnect.
+        console.warn('Chat refresh failed:', getAsyncErrorMessage(refreshError));
+      } finally {
+        isRefreshingMessages = false;
       }
-    );
+    };
 
-    const unsubscribeMembership = onSnapshot(
-      membershipRef,
-      (snapshot) => {
+    const refreshMembership = async () => {
+      if (isRefreshingMembership) return;
+      isRefreshingMembership = true;
+      try {
+        const snapshot = await getDoc(membershipRef);
+        if (!isMounted) return;
+
         if (!snapshot.exists()) {
-          router.replace('/messages');
+          // First refresh with no doc: likely a legacy trip without a backfilled
+          // membership doc, or the doc hasn't propagated yet. Trust the server
+          // check and stay put. Only treat disappearance as revocation if we
+          // had previously observed the doc as existing in this session.
+          if (hasObservedMembershipRef.current) {
+            router.replace('/messages');
+          }
           return;
         }
 
+        hasObservedMembershipRef.current = true;
         const membershipStatus = snapshot.data().status as string | undefined;
         if (membershipStatus === 'cancelled') {
           router.replace('/messages');
         }
-      },
-      (snapshotError) => {
-        if (snapshotError.code === 'permission-denied') {
-          router.replace('/messages');
-          return;
-        }
-
-        console.warn('Trip membership subscription failed:', snapshotError.message);
+      } catch (refreshError) {
+        // Same reasoning as above: never redirect on refresh errors. The
+        // explicit cancelled-status branch above is the only legitimate
+        // in-session revocation signal.
+        console.warn('Trip membership refresh failed:', getAsyncErrorMessage(refreshError));
+      } finally {
+        isRefreshingMembership = false;
       }
-    );
+    };
+
+    const refreshChatState = () => {
+      void refreshMessages();
+      void refreshMembership();
+    };
+
+    refreshChatState();
+    const refreshInterval = window.setInterval(refreshChatState, 3000);
 
     return () => {
-      unsubscribeMessages();
-      unsubscribeMembership();
+      isMounted = false;
+      window.clearInterval(refreshInterval);
     };
   }, [currentUserId, router, tripId]);
 
@@ -176,8 +217,21 @@ export default function ChatRoom({
     try {
       await sendMessage(tripId, content);
       setInput('');
-    } catch {
-      setSendError(copy.sendFailed);
+    } catch (sendErr) {
+      const errMsg = sendErr instanceof Error ? sendErr.message.toLowerCase() : '';
+      if (lang === 'ar') {
+        if (errMsg.includes('blocked')) {
+          setSendError('لا يمكنك إرسال رسائل لأن أحد المشاركين في الرحلة محظور.');
+        } else if (errMsg.includes('read-only') || errMsg.includes('read_only')) {
+          setSendError('هذه الرحلة في وضع القراءة فقط ولا يمكن إرسال رسائل الآن.');
+        } else if (errMsg.includes('unauthorized')) {
+          setSendError('ليست لديك صلاحية لإرسال رسائل في هذه الرحلة.');
+        } else {
+          setSendError(copy.sendFailed);
+        }
+      } else {
+        setSendError(copy.sendFailed);
+      }
     } finally {
       setLoading(false);
     }

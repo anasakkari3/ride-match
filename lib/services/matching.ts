@@ -1,16 +1,19 @@
 import { getAdminFirestore } from '@/lib/firebase/firestore-admin';
 import { getCurrentUser } from '@/lib/auth/session';
-import type { TripSearchResult } from '@/lib/types';
+import type { DriverGenderFilter, TripSearchResult } from '@/lib/types';
 import { trackEvent } from './analytics';
 import { normalizeLocationName, calculateLocationMatchScore } from '../utils/locations';
 import { UnauthorizedError } from '@/lib/utils/errors';
 import { BOOKABLE_TRIP_STATUSES, getEffectiveTripStatus } from '@/lib/trips/lifecycle';
 import { getCompletedDriveCountForDriver } from './trust';
+import { getUserProfile } from './user';
+import { doesDriverGenderMatchFilter, normalizeDriverGenderFilter } from '@/lib/trips/comfort';
 
 export type SearchTripsParams = {
   communityId: string;
   originName: string;
   destinationName: string;
+  driverGenderFilter?: DriverGenderFilter | string | null;
 };
 
 export async function searchTrips(params: SearchTripsParams) {
@@ -25,11 +28,13 @@ export async function searchTrips(params: SearchTripsParams) {
     payload: {
       origin: params.originName,
       destination: params.destinationName,
+      driver_gender_filter: normalizeDriverGenderFilter(params.driverGenderFilter),
     },
   });
 
   const originNorm = normalizeLocationName(params.originName);
   const destNorm = normalizeLocationName(params.destinationName);
+  const driverGenderFilter = normalizeDriverGenderFilter(params.driverGenderFilter);
 
   // Fetch all bookable trips in the community so older full-state records do not drift out of search.
   const snap = await db
@@ -81,15 +86,14 @@ export async function searchTrips(params: SearchTripsParams) {
 
     const finalScore = baseScore - timePenalty + seatsBonus;
 
-    // Fetch driver trust data. Stored user ratings are generic received ratings, not driver-only ratings.
-    let driverReceivedRatingAvg = 0;
-    let driverReceivedRatingCount = 0;
-    const driverDoc = await db.collection('users').doc(t.driver_id).get();
-    if (driverDoc.exists) {
-      const u = driverDoc.data()!;
-      driverReceivedRatingAvg = u.rating_avg ?? 0;
-      driverReceivedRatingCount = u.rating_count ?? 0;
+    const driverProfile = await getUserProfile(t.driver_id, db);
+    if (!doesDriverGenderMatchFilter(driverProfile?.gender, driverGenderFilter)) {
+      continue;
     }
+
+    // Fetch driver trust data. Stored user ratings are generic received ratings, not driver-only ratings.
+    const driverReceivedRatingAvg = driverProfile?.rating_avg ?? 0;
+    const driverReceivedRatingCount = driverProfile?.rating_count ?? 0;
     const driverCompletedDrives = await getCompletedDriveCountForDriver(t.driver_id, db);
 
     const result: TripSearchResult = {
@@ -103,6 +107,8 @@ export async function searchTrips(params: SearchTripsParams) {
       departure_time: t.departure_time,
       seats_available: t.seats_available,
       price_cents: t.price_cents,
+      passenger_gender_preference: t.passenger_gender_preference ?? 'any',
+      driver: driverProfile,
       driver_received_rating_avg: driverReceivedRatingAvg,
       driver_received_rating_count: driverReceivedRatingCount,
       driver_completed_drives: driverCompletedDrives,

@@ -1,4 +1,5 @@
 import PublicInfoPage from '@/components/public/PublicInfoPage';
+import { BRAND_NAME, brandCopy } from '@/lib/brand/config';
 import type { Lang } from '@/lib/i18n/dictionaries';
 import { formatLocalizedDate } from '@/lib/i18n/locale';
 import { getServerLang } from '@/lib/i18n/server';
@@ -42,14 +43,14 @@ const TERMS_COPY: Record<
 > = {
   en: {
     eyebrow: 'Terms and Conditions',
-    title: 'OnWay Terms and Conditions',
+    title: `${BRAND_NAME} Terms and Conditions`,
     description:
-      'These terms explain the basic rules for using OnWay as an early-stage community trip coordination product.',
+      `These terms explain the basic rules for using ${BRAND_NAME} as an early-stage community trip coordination product.`,
     sections: [
       {
-        title: '1. What OnWay does',
+        title: `1. What ${BRAND_NAME} does`,
         paragraphs: [
-          'OnWay helps communities coordinate shared trips, seat availability, bookings, and trip communication. It is a coordination tool, not a transportation company, taxi service, insurer, or payment processor.',
+          `${BRAND_NAME} helps communities coordinate shared trips, seat availability, bookings, and trip communication. It is a coordination tool, not a transportation company, taxi service, insurer, or payment processor.`,
           'When you use the product, you are responsible for the trips you post, the bookings you make, and the decisions you take based on information shared by other users.',
         ],
       },
@@ -84,7 +85,7 @@ const TERMS_COPY: Record<
       {
         title: '5. Pricing and payments',
         paragraphs: [
-          'If a trip includes a price, that amount is set by the user posting the trip. OnWay currently supports coordination around pricing, but it does not currently process rider payments inside the product unless a separate flow is explicitly introduced later.',
+          `If a trip includes a price, that amount is set by the user posting the trip. ${BRAND_NAME} currently supports coordination around pricing, but it does not currently process rider payments inside the product unless a separate flow is explicitly introduced later.`,
         ],
       },
       {
@@ -92,13 +93,13 @@ const TERMS_COPY: Record<
         bullets: [
           'We may restrict or remove content, bookings, trips, or accounts that appear abusive, unsafe, misleading, or unlawful.',
           'We may update, limit, or suspend features while the product is still in an early phase.',
-          'Do not rely on OnWay for emergency support or urgent safety response.',
+          `Do not rely on ${BRAND_NAME} for emergency support or urgent safety response.`,
         ],
       },
       {
         title: '7. Liability',
         paragraphs: [
-          'OnWay is provided on an as-is basis. To the extent allowed by law, OnWay is not responsible for user conduct, trip outcomes, route choices, payment disputes, delays, accidents, vehicle condition, or losses caused by reliance on user-submitted content.',
+          `${BRAND_NAME} is provided on an as-is basis. To the extent allowed by law, ${BRAND_NAME} is not responsible for user conduct, trip outcomes, route choices, payment disputes, delays, accidents, vehicle condition, or losses caused by reliance on user-submitted content.`,
         ],
       },
       {
@@ -250,7 +251,7 @@ const TERMS_COPY: Record<
 
 export default async function TermsPage() {
   const lang = await getServerLang();
-  const copy = TERMS_COPY[lang] ?? TERMS_COPY.en;
+  const copy = brandCopy(TERMS_COPY[lang] ?? TERMS_COPY.en);
   const lastUpdated = formatLocalizedDate(lang, '2026-04-05', {
     year: 'numeric',
     month: 'long',

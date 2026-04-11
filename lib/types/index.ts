@@ -78,6 +78,43 @@ export type TripStatus =
   | 'completed'
   | 'cancelled';
 
+/**
+ * Whether the trip is a one-time event or a recurring route.
+ *
+ * - 'one_time': departure_time is the exact departure datetime (ISO string).
+ * - 'recurring': departure_time is the next computed ISO occurrence, derived
+ *   from recurring_days + recurring_departure_time at trip creation time.
+ *   No automatic future instances are created; drivers re-publish manually
+ *   for each new period. This is an explicit MVP constraint.
+ *
+ * Old trips without this field are treated as 'one_time' everywhere.
+ */
+export type TripMode = 'one_time' | 'recurring';
+
+/**
+ * Weekday index matching JS Date.getDay(): 0=Sun, 1=Mon, ..., 6=Sat.
+ */
+export type WeekdayIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+export type TripRulePresetKey =
+  | 'no_delay'
+  | 'wait_5_minutes'
+  | 'no_smoking'
+  | 'prefer_quiet'
+  | 'fixed_meeting_point'
+  | 'confirm_attendance';
+
+export type DriverGenderFilter = 'any' | 'man' | 'woman';
+
+export type TripPassengerGenderPreference = 'any' | 'men_only' | 'women_only';
+
+export type BookingAcknowledgementsRow = {
+  trip_rules: boolean;
+  platform_role: boolean;
+  support_path: boolean;
+  acknowledged_at: string;
+};
+
 /** Trip stored in Firestore `trips` collection */
 export type TripsRow = {
   id: string;
@@ -89,6 +126,19 @@ export type TripsRow = {
   destination_lat: number;
   destination_lng: number;
   destination_name: string;
+  vehicle_make_model?: string | null;
+  vehicle_color?: string | null;
+  driver_note?: string | null;
+  trip_rule_preset_keys?: TripRulePresetKey[];
+  trip_rules_note?: string | null;
+  passenger_gender_preference?: TripPassengerGenderPreference | null;
+  /**
+   * departure_time semantics:
+   * - one_time trips: the exact departure datetime (ISO string).
+   * - recurring trips: the next upcoming occurrence datetime (ISO string),
+   *   computed at creation from recurring_days + recurring_departure_time.
+   *   All existing lifecycle guards (30-min window, past-check) work unchanged.
+   */
   departure_time: string;
   community_name?: string | null;
   community_type?: CommunityType | null;
@@ -101,6 +151,13 @@ export type TripsRow = {
   completed_at?: string | null;
   cancelled_at?: string | null;
   cancelled_by?: string | null;
+  // --- Recurring-trip metadata (absent / undefined on one-time trips) --------
+  /** Absent or 'one_time' for legacy and one-time trips. Safe to default to 'one_time'. */
+  trip_mode?: TripMode;
+  /** Weekday indices on which this route recurs. 0=Sun ... 6=Sat. */
+  recurring_days?: WeekdayIndex[];
+  /** Fixed departure time string in "HH:MM" 24h format. */
+  recurring_departure_time?: string;
 };
 
 /** Booking stored in Firestore `bookings` collection */
@@ -110,6 +167,7 @@ export type BookingsRow = {
   passenger_id: string;
   passenger_display_name?: string | null;
   passenger_avatar_url?: string | null;
+  booking_acknowledgements?: BookingAcknowledgementsRow | null;
   seats: number;
   status: 'pending' | 'confirmed' | 'cancelled';
   created_at: string;
@@ -198,7 +256,10 @@ export type AnalyticsEventsRow = {
 };
 
 /** User profile subset used in UI and relations */
-export type UserProfile = Pick<UsersRow, 'id' | 'display_name' | 'avatar_url' | 'rating_avg' | 'rating_count'>;
+export type UserProfile = Pick<
+  UsersRow,
+  'id' | 'display_name' | 'avatar_url' | 'gender' | 'rating_avg' | 'rating_count'
+>;
 
 export type RequiredProfileField =
   | 'display_name'
@@ -236,6 +297,8 @@ export type TripSearchResult = {
   departure_time: string;
   seats_available: number;
   price_cents: number | null;
+  passenger_gender_preference?: TripPassengerGenderPreference | null;
+  driver: UserProfile | null;
   driver_received_rating_avg: number;
   driver_received_rating_count: number;
   driver_completed_drives: number;
@@ -243,6 +306,10 @@ export type TripSearchResult = {
   dest_dist_m: number;
   time_diff_mins: number;
   score: number;
+  // --- Recurring-trip metadata (may be absent on older or one-time trips) ---
+  trip_mode?: TripMode;
+  recurring_days?: WeekdayIndex[];
+  recurring_departure_time?: string;
 };
 
 /** Community info */

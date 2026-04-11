@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: getBrandMetaTitle(),
-  description: getBrandMetaDescription('en'),
+  description: getBrandMetaDescription('ar'),
   manifest: "/manifest.webmanifest",
 };
 

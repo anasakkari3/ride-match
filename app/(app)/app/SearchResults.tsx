@@ -7,6 +7,7 @@ type SearchResultsProps = {
   communityId: string;
   originQuery: string;
   destQuery: string;
+  driverGenderFilter: string;
   lang: string;
   t: (key: string) => string;
 };
@@ -63,6 +64,7 @@ export default async function SearchResults({
   communityId,
   originQuery,
   destQuery,
+  driverGenderFilter,
   lang,
   t,
 }: SearchResultsProps) {
@@ -70,6 +72,7 @@ export default async function SearchResults({
     communityId,
     originName: originQuery,
     destinationName: destQuery,
+    driverGenderFilter,
   });
   const copy = COPY[lang === 'ar' || lang === 'he' ? lang : 'en'];
 
@@ -79,7 +82,11 @@ export default async function SearchResults({
   const encodedOrigin = encodeURIComponent(originQuery);
   const encodedDestination = encodeURIComponent(destQuery);
   const createHref = `/trips/new?community_id=${encodeURIComponent(communityId)}&originName=${encodedOrigin}&destinationName=${encodedDestination}`;
-  const browseHref = `/app?community_id=${encodeURIComponent(communityId)}`;
+  const browseParams = new URLSearchParams({ community_id: communityId });
+  if (driverGenderFilter && driverGenderFilter !== 'any') {
+    browseParams.set('driverGender', driverGenderFilter);
+  }
+  const browseHref = `/app?${browseParams.toString()}`;
 
   if (totalResults === 0) {
     return (

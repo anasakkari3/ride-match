@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import PublicInfoPage from '@/components/public/PublicInfoPage';
+import { BRAND_NAME, brandCopy } from '@/lib/brand/config';
 import type { Lang } from '@/lib/i18n/dictionaries';
 import { formatLocalizedDate } from '@/lib/i18n/locale';
 import { getServerLang } from '@/lib/i18n/server';
@@ -47,9 +48,9 @@ const PRIVACY_COPY: Record<
 > = {
   en: {
     eyebrow: 'Privacy Policy',
-    title: 'OnWay Privacy Policy',
+    title: `${BRAND_NAME} Privacy Policy`,
     description:
-      'This page describes the main categories of information OnWay uses to operate trip coordination, communities, and safety features.',
+      `This page describes the main categories of information ${BRAND_NAME} uses to operate trip coordination, communities, and safety features.`,
     sections: [
       {
         title: '1. Information we collect',
@@ -80,7 +81,7 @@ const PRIVACY_COPY: Record<
       {
         title: '4. Sharing with service providers',
         paragraphs: [
-          'OnWay relies on infrastructure and service providers needed to operate the app, including authentication, data storage, hosting, and analytics-related tooling. These providers may process data on our behalf to deliver the service.',
+          `${BRAND_NAME} relies on infrastructure and service providers needed to operate the app, including authentication, data storage, hosting, and analytics-related tooling. These providers may process data on our behalf to deliver the service.`,
         ],
       },
       {
@@ -223,7 +224,7 @@ const PRIVACY_COPY: Record<
 
 export default async function PrivacyPage() {
   const lang = await getServerLang();
-  const copy = PRIVACY_COPY[lang] ?? PRIVACY_COPY.en;
+  const copy = brandCopy(PRIVACY_COPY[lang] ?? PRIVACY_COPY.en);
   const lastUpdated = formatLocalizedDate(lang, '2026-04-05', {
     year: 'numeric',
     month: 'long',

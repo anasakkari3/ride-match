@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { normalizeNextPath, requireAuthenticatedUser } from '@/lib/auth/onboarding';
-import { getBrandDisplayName } from '@/lib/brand/config';
+import { BRAND_NAME } from '@/lib/brand/config';
 import { getServerLang } from '@/lib/i18n/server';
 import { getRequiredProfileCompletionStatus } from '@/lib/services/user';
 import ProfileForm from '@/app/(app)/profile/ProfileForm';
@@ -10,7 +10,7 @@ const COPY = {
     eyebrow: 'One-time setup',
     title: 'Complete your profile',
     description:
-      'Before entering OnWay, we need the minimum details people use to recognize and coordinate with you. You can update them later from your profile.',
+      `Before entering ${BRAND_NAME}, we need the minimum details people use to recognize and coordinate with you. You can update them later from your profile.`,
     needed: 'Still needed',
     fieldLabels: {
       display_name: 'Display name',
@@ -25,7 +25,7 @@ const COPY = {
     eyebrow: 'إعداد لمرة واحدة',
     title: 'أكمل ملفك الشخصي',
     description:
-      'قبل دخول بطريقك، نحتاج إلى الحد الأدنى من التفاصيل التي يعتمد عليها الناس للتعرّف عليك والتنسيق معك. يمكنك تعديلها لاحقًا من صفحة ملفك الشخصي.',
+      `قبل دخول ${BRAND_NAME}، نحتاج إلى الحد الأدنى من التفاصيل التي يعتمد عليها الناس للتعرّف عليك والتنسيق معك. يمكنك تعديلها لاحقًا من صفحة ملفك الشخصي.`,
     needed: 'ما زال مطلوبًا',
     fieldLabels: {
       display_name: 'الاسم المعروض',
@@ -40,7 +40,7 @@ const COPY = {
     eyebrow: 'הגדרה חד-פעמית',
     title: 'השלימו את הפרופיל שלכם',
     description:
-      'לפני שנכנסים אל בדרכך, אנחנו צריכים את הפרטים הבסיסיים שאנשים משתמשים בהם כדי לזהות אתכם ולתאם איתכם. תמיד תוכלו לעדכן אותם אחר כך מהפרופיל.',
+      `לפני שנכנסים אל ${BRAND_NAME}, אנחנו צריכים את הפרטים הבסיסיים שאנשים משתמשים בהם כדי לזהות אתכם ולתאם איתכם. תמיד תוכלו לעדכן אותם אחר כך מהפרופיל.`,
     needed: 'עדיין חסר',
     fieldLabels: {
       display_name: 'שם תצוגה',
@@ -58,7 +58,6 @@ export default async function OnboardingPage(props: {
 }) {
   const user = await requireAuthenticatedUser();
   const lang = await getServerLang();
-  const brandName = getBrandDisplayName(lang);
   const searchParams = await props.searchParams;
   const requestedNext = typeof searchParams.next === 'string' ? searchParams.next : null;
   const nextPath = normalizeNextPath(requestedNext);
@@ -69,10 +68,7 @@ export default async function OnboardingPage(props: {
   }
 
   const profile = completion.profile;
-  const copy = {
-    ...COPY[lang],
-    description: COPY[lang].description.replace(lang === 'en' ? 'OnWay' : lang === 'he' ? 'בדרכך' : 'بطريقك', brandName),
-  };
+  const copy = COPY[lang];
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-slate-100 px-4 py-10">

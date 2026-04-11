@@ -18,6 +18,8 @@ import { UnauthorizedError } from '@/lib/utils/errors';
 import { hasTripParticipantBlockConflict } from './safety';
 import { getAvailableCoordinationActions } from '@/lib/trips/coordination';
 import { logWarn } from '@/lib/observability/logger';
+import { getTripMembershipDocId } from '@/lib/trips/membership';
+import { collapseBookingsByPassenger } from '@/lib/bookings/canonical';
 
 export type InboxThread = {
   tripId: string;
@@ -55,6 +57,7 @@ async function getUserProfile(
     id: doc.id,
     display_name: data.display_name ?? null,
     avatar_url: data.avatar_url ?? null,
+    gender: data.gender ?? null,
     rating_avg: data.rating_avg ?? 0,
     rating_count: data.rating_count ?? 0,
   };
@@ -90,16 +93,65 @@ async function getTripParticipantBookings(
   tripId: string
 ): Promise<BookingsRow[]> {
   const snap = await db.collection('bookings').where('trip_id', '==', tripId).get();
-  return snap.docs.map((doc) => {
+  const bookings = snap.docs.map((doc) => {
     const data = doc.data() as Omit<BookingsRow, 'id'>;
     return { ...data, id: doc.id };
   });
+
+  return collapseBookingsByPassenger(bookings);
+}
+
+/**
+ * Best-effort backfill of the trip_membership doc for a user we have already
+ * verified has access. The chat client uses this doc as its in-session
+ * revocation signal, so a missing doc would otherwise eject the user. Legacy
+ * trips created before the trip_memberships collection existed may not have
+ * one — this closes that gap on first read. Failures are swallowed because
+ * read access is the source of truth, not the membership doc.
+ */
+async function backfillTripMembershipForVerifiedUser(
+  db: FirebaseFirestore.Firestore,
+  tripId: string,
+  userId: string,
+  role: 'driver' | 'passenger'
+): Promise<void> {
+  try {
+    const ref = db
+      .collection('trip_memberships')
+      .doc(getTripMembershipDocId(tripId, userId));
+    const existing = await ref.get();
+    if (existing.exists) {
+      const status = existing.data()?.status as string | undefined;
+      // Driver doc may have drifted to a stale 'cancelled' if the trip was
+      // briefly cancelled-then-revived; only re-write if missing.
+      if (status) return;
+    }
+
+    await ref.set(
+      {
+        trip_id: tripId,
+        user_id: userId,
+        role,
+        status: role === 'driver' ? 'driver' : 'confirmed',
+        updated_at: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    logWarn('chat.membership_backfill_failed', {
+      tripId,
+      userId,
+      role,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 export async function getTripCommunicationAccessForUser(
   userId: string | null | undefined,
   tripId: string,
-  passedDb?: FirebaseFirestore.Firestore
+  passedDb?: FirebaseFirestore.Firestore,
+  options: { backfillMembership?: boolean } = {}
 ): Promise<TripCommunicationAccess> {
   if (!userId) {
     return {
@@ -161,6 +213,15 @@ export async function getTripCommunicationAccessForUser(
     (booking) => booking.passenger_id === userId && booking.status === 'confirmed'
   );
 
+  if (options.backfillMembership) {
+    await backfillTripMembershipForVerifiedUser(
+      db,
+      tripId,
+      userId,
+      isDriver ? 'driver' : 'passenger'
+    );
+  }
+
   return {
     canView: true,
     canSendMessages: canParticipate && isActiveTrip && !isRestricted,
@@ -176,9 +237,12 @@ export async function getTripCommunicationAccessForUser(
   };
 }
 
-export async function getTripCommunicationAccess(tripId: string): Promise<TripCommunicationAccess> {
+export async function getTripCommunicationAccess(
+  tripId: string,
+  options: { backfillMembership?: boolean } = {}
+): Promise<TripCommunicationAccess> {
   const user = await getCurrentUser();
-  return getTripCommunicationAccessForUser(user?.id ?? null, tripId);
+  return getTripCommunicationAccessForUser(user?.id ?? null, tripId, undefined, options);
 }
 
 /** Checks if the current user is authorized to view a trip's chat */

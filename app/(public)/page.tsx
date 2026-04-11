@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import BrandLogo from '@/components/BrandLogo';
 import FounderStorySection from '@/components/public/FounderStorySection';
+import PhoneVideoPlayer from '@/components/public/PhoneVideoPlayer';
 import { getCurrentUser } from '@/lib/auth/session';
 import { getPostAuthRedirectPath } from '@/lib/auth/onboarding';
 import { dictionaries, type DictKey, Lang, translate } from '@/lib/i18n/dictionaries';
@@ -143,57 +144,16 @@ export default async function PublicLandingPage() {
               {/* Phone glow */}
               <div className="absolute -inset-8 bg-gradient-to-b from-sky-400/20 to-cyan-400/10 dark:from-sky-500/10 dark:to-cyan-500/5 rounded-[60px] blur-2xl pointer-events-none" />
 
-              <div className="relative rounded-[44px] border-[6px] border-slate-900 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 h-[620px] shadow-2xl overflow-hidden ring-1 ring-slate-800/20">
-                {/* Notch */}
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 h-6 bg-slate-900 dark:bg-slate-700 rounded-b-2xl z-20" />
-                {/* Status bar dots */}
-                <div className="absolute top-1.5 right-6 flex items-center gap-1 z-20">
-                  <div className="w-1 h-1 rounded-full bg-slate-600" />
-                  <div className="w-1 h-1 rounded-full bg-slate-600" />
-                  <div className="w-1 h-1 rounded-full bg-slate-600" />
+              <div className="relative rounded-[44px] border-[6px] border-slate-900 dark:border-slate-700 bg-slate-950 h-[620px] shadow-2xl overflow-hidden ring-1 ring-slate-800/20">
+                {/* Notch overlay — sits above the video */}
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 h-6 bg-slate-900 rounded-b-2xl z-20 pointer-events-none" />
+                {/* Home indicator overlay */}
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-28 h-1 bg-slate-600/70 rounded-full z-20 pointer-events-none" />
+
+                {/* Remotion video fills the phone */}
+                <div className="w-full h-full">
+                  <PhoneVideoPlayer />
                 </div>
-
-                <div className="pt-10 px-3 pb-4 h-full overflow-y-auto scrollbar-hide">
-                  {/* Mini search */}
-                  <div className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 shadow-sm mb-4 border border-slate-100 dark:border-slate-800">
-                    <div className="flex gap-2 items-center mb-2">
-                      <div className="w-2 h-2 rounded-full bg-sky-500 shrink-0" />
-                      <div className="h-3.5 w-20 bg-slate-200 dark:bg-slate-800 rounded-md" />
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      <div className="w-2 h-2 rounded-full border-[1.5px] border-emerald-500 shrink-0" />
-                      <div className="h-3.5 w-28 bg-slate-200 dark:bg-slate-800 rounded-md" />
-                    </div>
-                  </div>
-
-                  {/* Mini trip cards */}
-                  {[
-                    { w1: 'w-3/4', w2: 'w-1/2', accent: 'bg-amber-400' },
-                    { w1: 'w-2/3', w2: 'w-3/5', accent: 'bg-sky-200 dark:bg-sky-800' },
-                    { w1: 'w-1/2', w2: 'w-3/4', accent: 'bg-sky-200 dark:bg-sky-800' },
-                  ].map((card, i) => (
-                    <div key={i} className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 shadow-sm mb-3 border border-slate-100 dark:border-slate-800 relative overflow-hidden">
-                      <div className={`absolute left-0 top-3 bottom-3 w-0.5 rounded-full ${card.accent}`} />
-                      <div className="pl-2.5">
-                        <div className="flex items-center gap-2 mb-2.5">
-                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-slate-200 to-slate-100 dark:from-slate-700 dark:to-slate-800" />
-                          <div className="h-2.5 w-14 bg-slate-200 dark:bg-slate-800 rounded" />
-                          <div className="flex-1" />
-                          <div className="h-3 w-8 bg-slate-900/80 dark:bg-sky-400/20 rounded-full" />
-                        </div>
-                        <div className={`h-2.5 ${card.w1} bg-slate-100 dark:bg-slate-800 rounded mb-1.5`} />
-                        <div className={`h-2.5 ${card.w2} bg-slate-100 dark:bg-slate-800 rounded mb-3`} />
-                        <div className="flex justify-between items-center pt-2.5 border-t border-slate-50 dark:border-slate-800">
-                          <div className="h-2.5 w-10 bg-slate-200 dark:bg-slate-800 rounded" />
-                          <div className="h-4 w-14 bg-sky-100 dark:bg-sky-900/30 rounded-full" />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Bottom home indicator */}
-                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-28 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
               </div>
             </div>
           </div>

@@ -412,6 +412,7 @@ export async function getUserProfile(
     id: doc.id,
     display_name: d.display_name ?? null,
     avatar_url: d.avatar_url ?? null,
+    gender: d.gender ?? null,
     rating_avg: d.rating_avg ?? 0,
     rating_count: d.rating_count ?? 0,
   };

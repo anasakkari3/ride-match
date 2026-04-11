@@ -122,6 +122,7 @@ const COPY = {
     age: 'Age',
     gender: 'Gender',
     genderSelect: 'Select gender',
+    editInfo: 'Edit profile',
     genderOptions: {
       woman: 'Woman',
       man: 'Man',
@@ -173,13 +174,14 @@ const COPY = {
     age: 'العمر',
     gender: 'الجنس',
     genderSelect: 'اختر الجنس',
+    editInfo: 'تعديل المعلومات',
     genderOptions: {
       woman: 'امرأة',
       man: 'رجل',
       nonBinary: 'غير ثنائي',
       preferNotToSay: 'أفضل عدم الإجابة',
     },
-    driverQuestion: 'هل أنت سائق؟',
+    driverQuestion: 'هل ترغب بعرض رحلات كسائق؟',
     driverYesTitle: 'نعم',
     driverYesDesc: 'يمكنني عرض رحلات كسائق.',
     driverNoTitle: 'لا',
@@ -188,9 +190,9 @@ const COPY = {
     licenseRequired: 'مطلوبة إذا كنت تريد عرض رحلات.',
     licenseOptional: 'اختيارية إلى أن تقرر عرض رحلات لاحقًا.',
     licenseYesDesc: 'لدي رخصة قيادة سارية.',
-    licenseNoDesc: 'لا أستطيع عرض رحلات تتطلب سائقًا مرخّصًا.',
-    genderPreference: 'تفضيل الجنس',
-    genderPreferenceHint: 'اختياري. اتركه فارغًا إذا لم يكن لديك تفضيل.',
+    licenseNoDesc: 'لن تتمكن من نشر رحلات بدون رخصة قيادة.',
+    genderPreference: 'تفضيل الجلوس (اختياري)',
+    genderPreferenceHint: 'اتركه فارغًا إذا لم يكن لديك تفضيل.',
     genderPreferenceOptions: {
       none: 'لا يوجد تفضيل',
       women: 'أفضل النساء',
@@ -200,7 +202,7 @@ const COPY = {
     },
     verificationEyebrow: 'عناصر تحقق مؤقتة',
     verificationTitle: 'تحقق مستقبلي من المستندات',
-    verificationDesc: 'هذا ليس مسار رفع حقيقي بعد. يمكنك اختيار ملف الآن وحفظ حالة مؤقتة فقط، لكن صورة المستند الفعلية تبقى على هذا الجهاز ولا يتم رفعها أو تخزينها داخل التطبيق.',
+    verificationDesc: 'هذه الميزة غير متاحة حاليًا.',
     licenseImageTitle: 'صورة رخصة القيادة',
     licenseImageDesc: 'عنصر مؤقت لصورة رخصة القيادة عند إضافة التحقق الكامل لاحقًا.',
     licenseImageInput: 'اختر صورة محلية لرخصة القيادة',
@@ -224,6 +226,7 @@ const COPY = {
     age: 'גיל',
     gender: 'מגדר',
     genderSelect: 'בחרו מגדר',
+    editInfo: 'ערוך פרטים',
     genderOptions: {
       woman: 'אישה',
       man: 'גבר',
@@ -289,11 +292,11 @@ function localizeProfileError(message: string, lang: keyof typeof COPY) {
       'Phone is required.': 'رقم الهاتف مطلوب.',
       'City or area is required.': 'المدينة أو المنطقة مطلوبة.',
       'Age is required.': 'العمر مطلوب.',
-      'Please choose a valid gender.': 'يرجى اختيار جنس صحيح.',
-      'Please choose whether you are a driver.': 'يرجى تحديد ما إذا كنت سائقًا.',
+      'Please choose a valid gender.': 'اختر الجنس من الخيارات المتاحة.',
+      'Please choose whether you are a driver.': 'حدد ما إذا كنت ترغب بعرض رحلات كسائق.',
       "Drivers must confirm they have a valid driver's license.": 'يجب على السائقين تأكيد امتلاكهم لرخصة قيادة سارية.',
-      "Please choose whether you have a driver's license.": 'يرجى تحديد ما إذا كانت لديك رخصة قيادة.',
-      'Please choose a valid gender preference.': 'يرجى اختيار تفضيل جنس صحيح.',
+      "Please choose whether you have a driver's license.": 'حدد ما إذا كانت لديك رخصة قيادة.',
+      'Please choose a valid gender preference.': 'اختر تفضيلًا صحيحًا من القائمة.',
     },
     he: {
       'Display name is required.': 'שם התצוגה הוא שדה חובה.',
@@ -334,6 +337,7 @@ export default function ProfileForm({
   const copy = COPY[lang];
   const isOnboarding = mode === 'onboarding';
   const showExtendedPersonalDetails = mode === 'profile';
+  const [isEditing, setIsEditing] = useState(mode === 'onboarding');
   const [displayName, setDisplayName] = useState(initialDisplayName);
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl);
   const [phone, setPhone] = useState(initialPhone);
@@ -428,6 +432,56 @@ export default function ProfileForm({
       setLoading(false);
     }
   };
+
+  if (!isEditing && mode !== 'onboarding') {
+    const genderLabel = (() => {
+      if (!gender) return '—';
+      if (gender === 'woman') return copy.genderOptions.woman;
+      if (gender === 'man') return copy.genderOptions.man;
+      if (gender === 'non-binary') return copy.genderOptions.nonBinary;
+      if (gender === 'prefer_not_to_say') return copy.genderOptions.preferNotToSay;
+      return gender;
+    })();
+    const driverLabel = isDriver === true ? copy.driverYesTitle : isDriver === false ? copy.driverNoTitle : '—';
+
+    return (
+      <div className="space-y-4">
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{t('display_name')}</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{displayName || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{copy.phone}</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{phone || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{copy.city}</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{cityOrArea || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{copy.age}</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{age || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{copy.gender}</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{genderLabel}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{copy.driverQuestion}</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{driverLabel}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsEditing(true)}
+          className="w-full rounded-xl bg-sky-600 dark:bg-sky-500 px-4 py-3 font-medium text-white hover:bg-sky-700 dark:hover:bg-sky-600 transition-colors"
+        >
+          {copy.editInfo}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
